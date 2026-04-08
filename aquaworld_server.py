@@ -862,16 +862,55 @@ class AquaHandler(SimpleHTTPRequestHandler):
             return self.write_json({"ok": False, "error": "Missing fish data"}, 400)
 
         contest = contest_for_today()
-        submission_id = payload.get("submission_id") or f"sub_{uuid.uuid4().hex[:16]}"
+        requested_submission_id = clean_text(payload.get("submission_id"), "", 64)
         now = iso_now()
         with db() as conn:
-            existing = conn.execute(
-                "SELECT owner_client_id, likes, frenzy_score FROM fish_submissions WHERE submission_id = ?",
-                (submission_id,),
-            ).fetchone()
+            existing = None
+            if requested_submission_id:
+                existing = conn.execute(
+                    "SELECT * FROM fish_submissions WHERE submission_id = ?",
+                    (requested_submission_id,),
+                ).fetchone()
             if existing and existing["owner_client_id"] != owner_client_id:
                 return self.write_json({"ok": False, "error": "Submission belongs to another owner"}, 403)
-            if existing:
+            owner_entries = conn.execute(
+                """
+                SELECT * FROM fish_submissions
+                WHERE contest_period = ? AND owner_client_id = ?
+                ORDER BY updated_at DESC, created_at DESC, submission_id DESC
+                """,
+                (contest["period"], owner_client_id),
+            ).fetchall()
+            keep_existing = existing if existing and existing["contest_period"] == contest["period"] else None
+            primary_entry = keep_existing or (owner_entries[0] if owner_entries else None)
+            primary_submission_id = primary_entry["submission_id"] if primary_entry else ""
+
+            for row in owner_entries:
+                if row["submission_id"] == primary_submission_id:
+                    continue
+                conn.execute("DELETE FROM fish_votes WHERE submission_id = ?", (row["submission_id"],))
+                conn.execute("DELETE FROM fish_submissions WHERE submission_id = ?", (row["submission_id"],))
+
+            if primary_entry and not keep_existing:
+                conn.execute("DELETE FROM fish_votes WHERE submission_id = ?", (primary_submission_id,))
+                conn.execute(
+                    """
+                    UPDATE fish_submissions
+                    SET contest_period = ?, contest_title = ?, room_code = ?, owner_id = ?, owner_name = ?, owner_color = ?,
+                        fish_id = ?, fish_name = ?, fish_kind = ?, personality = ?, rarity = ?, rarity_color = ?, speed = ?,
+                        scale = ?, image = ?, likes = 0, frenzy_score = ?, created_at = ?, updated_at = ?
+                    WHERE submission_id = ?
+                    """,
+                    (
+                        contest["period"], contest["title"], payload.get("room_code"), payload.get("owner_id"),
+                        owner_name, payload.get("owner_color"), fish.get("id"), fish_name, fish.get("kind"),
+                        fish.get("personality"), fish.get("rarity"), fish.get("rarityColor"), fish.get("speed"),
+                        fish.get("scale"), image, int(fish.get("foodScore") or 0), now, now, primary_submission_id,
+                    ),
+                )
+                submission_id = primary_submission_id
+            elif keep_existing:
+                submission_id = primary_submission_id
                 conn.execute(
                     """
                     UPDATE fish_submissions
@@ -888,6 +927,7 @@ class AquaHandler(SimpleHTTPRequestHandler):
                     ),
                 )
             else:
+                submission_id = f"sub_{uuid.uuid4().hex[:16]}"
                 conn.execute(
                     """
                     INSERT INTO fish_submissions (

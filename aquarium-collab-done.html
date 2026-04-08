@@ -2402,6 +2402,7 @@ function handleMsg(d, from) {
         if (f.kind === 'Fish') fishes.push(f); else plants.push(f);
         delete imgCache[f.img]; rebuildGal(); saveStorage(); loadGlobalContestState(true);
     } else if (d.type === 'CHAT') {
+        if (sender === myId) return;
         appendChat(d.name, d.color, d.text);
         // Show speech bubble above a fish owned by sender
         const ownerFish = fishes.find(f => f.ownerId === sender);

@@ -997,6 +997,14 @@ function syncPlayerProfileFromInputs() {
     ensurePlayerIdentity();
     savePlayerProfile();
 }
+function rememberPlayerNameDraft() {
+    const nameInput = document.getElementById('name-input');
+    if (!nameInput) return;
+    const typed = String(nameInput.value || '').trim();
+    if (!typed) return;
+    myName = typed.slice(0, 40);
+    savePlayerProfile();
+}
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;',
@@ -1270,7 +1278,12 @@ function initWelcome() {
     const hasCode = new URLSearchParams(location.search).get('room');
     document.getElementById('join-prompt').style.display = 'block';
     const nameInput = document.getElementById('name-input');
-    if (nameInput) nameInput.value = myName || 'Aquarist';
+    if (nameInput) {
+        nameInput.value = myName || 'Aquarist';
+        nameInput.addEventListener('input', rememberPlayerNameDraft);
+        nameInput.addEventListener('change', rememberPlayerNameDraft);
+        nameInput.addEventListener('blur', rememberPlayerNameDraft);
+    }
     if (hasCode) {
         linkedRoomCode = normalizeRoomCode(hasCode);
         document.getElementById('room-input').value = linkedRoomCode;
@@ -1292,7 +1305,9 @@ function initWelcome() {
     if (AV_COLORS.includes(myColor)) selectPlayerColor(myColor);
     else document.querySelectorAll('#color-picker button')[0].click();
     initAudio();
-    const firstInput = linkedRoomCode ? document.getElementById('name-input') : document.getElementById('name-input');
+    const firstInput = (myName && myName !== 'Aquarist')
+        ? document.getElementById('room-input')
+        : document.getElementById('name-input');
     setTimeout(() => {
         try { firstInput.focus(); } catch (e) {}
     }, 60);

@@ -585,6 +585,7 @@
     <input class="mobile-secondary volume-slider" type="range" min="0" max="1" step="0.05" value="0.5" oninput="setVolume(this.value)" title="Volume" style="width:55px;">
     <button onclick="openLeaderboard('contest')" title="Global contest">🏆</button>
     <button id="feed-btn" class="mobile-secondary" onclick="toggleFeedMode()" title="Feed mode">🍤</button>
+    <button class="mobile-secondary" onclick="showMyCreatures()" title="My creatures">🗂️</button>
     <button class="mobile-secondary" onclick="screenshotAquarium()" title="Screenshot">📸</button>
     <button class="mobile-secondary" onclick="showAchievements()" title="Achievements">🏅</button>
     <span id="coin-display" class="coin-display mobile-secondary" style="font-size:11px;color:#FFD700;">🪙 0</span>
@@ -714,6 +715,7 @@
         <button id="mobile-night-btn" onclick="toggleNight()">🌙 Night Mode</button>
         <button id="mobile-sound-btn" onclick="toggleSound()">🔊 Sound</button>
         <button id="mobile-feed-btn" onclick="toggleFeedMode()">🍤 Feed Mode</button>
+        <button onclick="showMyCreatures()">🗂️ My Creatures</button>
         <button onclick="screenshotAquarium()">📸 Screenshot</button>
         <button onclick="showAchievements()">🏅 Achievements</button>
         <button onclick="emptyTank()" class="mobile-menu-wide">🧹 Clear Tank</button>
@@ -1004,6 +1006,7 @@ async function openGlobalHub() {
     closeDrawPanel();
     closeMobileMenu();
     closeFishStats();
+    closeMyCreatures();
     await loadGlobalContestState(false);
     renderGlobalHub();
 }
@@ -1016,6 +1019,7 @@ const PALETTE_DATA = [
 ];
 const PLAYER_PROFILE_KEY = 'aqPlayerProfileV1';
 const LAST_ROOM_KEY = 'aqLastRoomCodeV1';
+const CREATURE_LIBRARY_KEY = 'aqCreatureLibraryV1';
 const PUBLIC_ROOM_CODE = 'OCEAN';
 const BLOCKED_WORDS = [
     'asshole', 'bastard', 'bitch', 'bullshit', 'dick', 'fck', 'fuck',
@@ -1033,6 +1037,7 @@ let contestCycleStartedAt = 0;
 const CONTEST_CYCLE_MS = 24 * 60 * 60 * 1000;
 let feedSyncTimers = {};
 let linkedRoomCode = '';
+let myCreatureLibrary = [];
 let globalContestState = { contest: null, leaderboard: [], gallery: [], hall_of_fame: [] };
 let contestRefreshTimer = 0, notifyTimer = 0, contestServerOnline = false;
 let roomMeta = null, roomBootstrap = null, roomLastEventId = 0, roomSyncTimer = 0, roomSyncBusy = false, roomLeaving = false;
@@ -1134,6 +1139,182 @@ function prepareFishName(value, excludeId = '') {
     const unique = uniqueFishName(base, excludeId);
     if (!reason && unique !== base) reason = 'duplicate';
     return { name: unique, reason, original };
+}
+function normalizeCreatureTemplate(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.img) return null;
+    return {
+        id: String(raw.id || raw.libraryId || `lib_${rnd6()}${rnd6()}`).slice(0, 64),
+        name: String(raw.name || 'Fish').trim().slice(0, 40) || 'Fish',
+        kind: raw.kind === 'Plant' ? 'Plant' : 'Fish',
+        img: String(raw.img || ''),
+        personality: String(raw.personality || 'Friendly').trim().slice(0, 24) || 'Friendly',
+        rarity: String(raw.rarity || 'Common').trim().slice(0, 24) || 'Common',
+        rarityColor: String(raw.rarityColor || '#9fb4d1').trim().slice(0, 24) || '#9fb4d1',
+        speed: String(raw.speed || 'Calm').trim().slice(0, 24) || 'Calm',
+        scale: Math.max(0.15, Math.min(6, parseFloat(raw.scale) || 1)),
+        savedAt: Number(raw.savedAt || Date.now()) || Date.now(),
+        updatedAt: Number(raw.updatedAt || Date.now()) || Date.now()
+    };
+}
+function loadCreatureLibrary() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CREATURE_LIBRARY_KEY) || '[]');
+        myCreatureLibrary = Array.isArray(parsed)
+            ? parsed.map(normalizeCreatureTemplate).filter(Boolean).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            : [];
+    } catch (e) {
+        myCreatureLibrary = [];
+    }
+}
+function saveCreatureLibrary() {
+    localStorage.setItem(CREATURE_LIBRARY_KEY, JSON.stringify(myCreatureLibrary));
+    if (document.getElementById('my-creatures-panel')) renderMyCreaturesPanel();
+}
+function upsertCreatureTemplateFromFish(fish) {
+    if (!fish?.img || fish.ownerId !== myId) return null;
+    const template = normalizeCreatureTemplate({
+        id: fish.libraryId || fish.id,
+        name: fish.name,
+        kind: fish.kind,
+        img: fish.img,
+        personality: fish.personality,
+        rarity: fish.rarity,
+        rarityColor: fish.rarityColor,
+        speed: fish.speed,
+        scale: fish.scale,
+        savedAt: Date.now(),
+        updatedAt: Date.now()
+    });
+    if (!template) return null;
+    const idx = myCreatureLibrary.findIndex(entry => entry.id === template.id);
+    if (idx >= 0) myCreatureLibrary[idx] = { ...myCreatureLibrary[idx], ...template, updatedAt: Date.now() };
+    else myCreatureLibrary.unshift(template);
+    fish.libraryId = template.id;
+    saveCreatureLibrary();
+    return template.id;
+}
+function removeCreatureTemplate(templateId) {
+    const template = myCreatureLibrary.find(entry => entry.id === templateId);
+    if (!template) return;
+    if (!confirm(`Remove ${template.name} from My Creatures?`)) return;
+    myCreatureLibrary = myCreatureLibrary.filter(entry => entry.id !== templateId);
+    saveCreatureLibrary();
+}
+function placeCreatureInAquarium(templateId) {
+    const template = myCreatureLibrary.find(entry => entry.id === templateId);
+    if (!template) return notify('Could not find that saved creature.', '#ff6666');
+    if (!roomCode) return notify('Join a room before releasing from My Creatures.', '#ff6666');
+    const fx = Math.random() * (aqC.width - 100) + 50;
+    const fy = Math.random() * (aqC.height - 100) + 50;
+    const fish = {
+        id: rnd6(),
+        libraryId: template.id,
+        img: template.img,
+        name: uniqueFishName(template.name),
+        kind: template.kind,
+        personality: template.personality,
+        rarity: template.rarity,
+        rarityColor: template.rarityColor,
+        speed: template.speed,
+        scale: template.scale,
+        x: fx, y: fy,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 2,
+        angle: 0,
+        wobble: 0,
+        ownerId: myId,
+        bornAt: Date.now(),
+        foodScore: 0,
+        inFeedRace: false,
+        inContest: false,
+        contestEntryId: null,
+        globalLikes: 0
+    };
+    if (fish.kind === 'Fish') fishes.push(fish); else plants.push(fish);
+    for (let i = 0; i < 16; i++) {
+        particles.push({ x: fx, y: fy, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:34, color:'#00c6ff', r:2 });
+    }
+    releaseHist.push({ kind: fish.kind, fish });
+    sendMsg({ type: 'FISH_ADD', kind: fish.kind, fish });
+    saveStorage();
+    addFCard(fish, fish.kind);
+    upsertCreatureTemplateFromFish(fish);
+    playSound('release');
+    coins += 10; updateCoins(); localStorage.setItem('aqCoins', coins);
+    if (fish.kind === 'Fish') {
+        if (fishes.length === 1) unlockAch('first_fish');
+        if (fishes.length >= 10) unlockAch('ten_fish');
+    } else {
+        unlockAch('first_plant');
+    }
+    if (Object.keys(users).length > 1) unlockAch('multi_artist');
+    notify(`🫧 ${fish.name} swam back into the aquarium`, '#00c6ff');
+}
+function loadCreatureTemplateToCanvas(templateId) {
+    const template = myCreatureLibrary.find(entry => entry.id === templateId);
+    if (!template) return notify('Could not find that saved creature.', '#ff6666');
+    openDrawPanel();
+    editingId = null;
+    document.getElementById('edit-banner').style.display = 'none';
+    document.getElementById('fish-name').value = template.name;
+    document.getElementById('fish-type').value = template.kind;
+    document.getElementById('fish-speed').value = template.speed;
+    document.getElementById('fish-scale').value = template.scale;
+    document.getElementById('scale-lbl').textContent = `${Math.round((parseFloat(template.scale) || 1) * 100)}%`;
+    const img = new Image();
+    img.onload = () => {
+        dc.clearRect(0, 0, drawC.width, drawC.height);
+        dc.drawImage(img, 0, 0, drawC.width, drawC.height);
+        drawHist = [];
+        redoHist = [];
+    };
+    img.src = template.img;
+    notify(`✏️ Loaded ${template.name} back into the drawing pad`, '#9fb4d1');
+}
+function closeMyCreatures() {
+    removePanel(document.getElementById('my-creatures-panel'));
+}
+function renderMyCreaturesPanel() {
+    const panel = document.getElementById('my-creatures-panel');
+    if (!panel) return;
+    const entries = myCreatureLibrary.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const list = entries.length ? entries.map(entry => `
+        <div style="display:flex;gap:10px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;align-items:center;">
+            <img src="${entry.img}" alt="${escapeHtml(entry.name)}" style="width:62px;height:50px;object-fit:contain;background:rgba(0,0,0,0.24);border-radius:8px;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(entry.name)}</div>
+                <div style="font-size:10px;color:${entry.rarityColor || '#9fb4d1'};margin-top:2px;">${escapeHtml(entry.kind)} · ${escapeHtml(entry.rarity || 'Common')} · ${escapeHtml(entry.personality || 'Friendly')}</div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;">
+                    <button onclick="placeCreatureInAquarium('${entry.id}')" style="background:var(--green);border:none;color:#fff;padding:7px 8px;border-radius:8px;cursor:pointer;">Release</button>
+                    <button onclick="loadCreatureTemplateToCanvas('${entry.id}');closeMyCreatures();" style="background:var(--accent);border:none;color:#fff;padding:7px 8px;border-radius:8px;cursor:pointer;">Load</button>
+                    <button onclick="removeCreatureTemplate('${entry.id}')" style="background:#8b3046;border:none;color:#fff;padding:7px 8px;border-radius:8px;cursor:pointer;">Remove</button>
+                </div>
+            </div>
+        </div>
+    `).join('') : '<div style="font-size:11px;color:#9fb4d1;">Release fish or plants once, and they will stay here for later rooms.</div>';
+    panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <div style="font-size:16px;font-weight:800;color:#fff;">My Creatures</div>
+            <div style="font-size:10px;color:#9fb4d1;">Reuse your own fish and plants anywhere</div>
+            <button onclick="closeMyCreatures()" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:#fff;padding:6px 8px;border-radius:8px;cursor:pointer;">✕</button>
+        </div>
+        ${list}
+    `;
+}
+function showMyCreatures() {
+    const existing = document.getElementById('my-creatures-panel');
+    if (existing) { removePanel(existing); return; }
+    closeMobileMenu();
+    closeGlobalHub();
+    closeFishStats();
+    const panel = document.createElement('div');
+    panel.id = 'my-creatures-panel';
+    panel.style.cssText = window.innerWidth <= 768
+        ? 'position:fixed;left:10px;right:10px;bottom:12px;max-height:min(78vh,580px);overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:14px;z-index:2600;box-shadow:0 -16px 34px rgba(0,0,0,0.55);'
+        : 'position:fixed;top:54px;right:12px;width:min(400px,calc(100vw - 24px));max-height:76vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;z-index:2600;box-shadow:0 18px 38px rgba(0,0,0,0.5);';
+    document.body.appendChild(panel);
+    renderMyCreaturesPanel();
+    bindOutsideClose(panel, closeMyCreatures);
 }
 function loadPlayerProfile() {
     try {
@@ -1298,6 +1479,7 @@ function toggleMobileMenu() {
         closeDrawPanel();
         closeGlobalHub();
         closeFishStats();
+        closeMyCreatures();
         openMobileMenu();
     }
 }
@@ -1482,6 +1664,7 @@ function showFishStats(id) {
     closeGlobalHub();
     closeMobileMenu();
     closeFishStats();
+    closeMyCreatures();
     const panel = document.createElement('div');
     panel.id = 'fish-stats-panel';
     panel.style.cssText = window.innerWidth <= 768
@@ -1548,6 +1731,7 @@ function openDrawPanel() {
     closeGlobalHub();
     closeMobileMenu();
     closeFishStats();
+    closeMyCreatures();
     if (panel) panel.classList.add('open');
     if (backdrop && window.innerWidth <= 768) backdrop.classList.add('open');
 }
@@ -1668,6 +1852,7 @@ function findDecoNear(x, y) {
 
 function initWelcome() {
     ensurePlayerIdentity();
+    loadCreatureLibrary();
     const hasCode = new URLSearchParams(location.search).get('room');
     document.getElementById('join-prompt').style.display = 'block';
     setWelcomeStatus('');
@@ -2506,9 +2691,11 @@ function release() {
         if (existing) {
             if (existing.inContest && kind !== 'Fish') removeGlobalContestEntry(existing, true);
             existing.img = img; existing.name = name; existing.kind = kind; existing.speed = document.getElementById('fish-speed').value; existing.scale = scale;
+            existing.libraryId = existing.libraryId || rnd6();
             fishes = fishes.filter(f => f.id !== editingId); plants = plants.filter(p => p.id !== editingId);
             if (kind === 'Fish') fishes.push(existing); else plants.push(existing);
             delete imgCache[existing.img]; existing.img = img;
+            upsertCreatureTemplateFromFish(existing);
             rebuildGal(); sendMsg({ type: 'FISH_EDIT', id: editingId, fish: existing }); saveStorage();
             if (existing.inContest) submitFishGlobal(existing.id);
         }
@@ -2530,7 +2717,7 @@ function release() {
     }
     const fx = Math.random() * (aqC.width - 100) + 50, fy = Math.random() * (aqC.height - 100) + 50;
     const fish = {
-        id: rnd6(), img, name, kind, personality, rarity: rarity.name, rarityColor: rarity.color,
+        id: rnd6(), libraryId: rnd6(), img, name, kind, personality, rarity: rarity.name, rarityColor: rarity.color,
         speed: document.getElementById('fish-speed').value, scale,
         x: fx, y: fy,
         vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 2, angle: 0, wobble: 0, ownerId: myId,
@@ -2543,6 +2730,7 @@ function release() {
         particles.push({ x: fx, y: fy, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:40, color:'#00c6ff', r:2 });
     }
     releaseHist.push({ kind, fish });
+    upsertCreatureTemplateFromFish(fish);
     sendMsg({ type: 'FISH_ADD', kind, fish });
     saveStorage(); addFCard(fish, kind);
     playSound('release');
@@ -2713,6 +2901,7 @@ function showAchievements() {
     closeMobileMenu();
     closeGlobalHub();
     closeFishStats();
+    closeMyCreatures();
     const panel = document.createElement('div');
     panel.id = 'ach-panel';
     panel.style.cssText = window.innerWidth <= 768

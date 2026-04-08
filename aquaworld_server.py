@@ -587,6 +587,7 @@ def clean_fish_payload(raw_fish: dict, owner_id: str, current: dict | None = Non
     current_food_score = current.get("foodScore") if current else 0
     current_global_likes = current.get("globalLikes") if current else 0
     current_speech_expires = current.get("speechExpires") if current else 0
+    current_library_id = current.get("libraryId") if current else ""
     fish["id"] = clean_text(fish.get("id") or uuid.uuid4().hex[:8], "fish", 64)
     fish["name"] = safe_public_name(fish.get("name"), clean_text(current.get("name"), "Fish", 40) if current else "Fish", 40)
     fish["kind"] = forced_kind or ("Plant" if clean_text(fish.get("kind"), "Fish", 10).lower() == "plant" else "Fish")
@@ -603,6 +604,7 @@ def clean_fish_payload(raw_fish: dict, owner_id: str, current: dict | None = Non
     fish["angle"] = clamp_float(fish.get("angle"), current.get("angle") if current else 0.0, -12.0, 12.0)
     fish["wobble"] = clamp_float(fish.get("wobble"), current.get("wobble") if current else 0.0, -12.0, 12.0)
     fish["ownerId"] = owner_id
+    fish["libraryId"] = clean_text(fish.get("libraryId"), clean_text(current_library_id, "", 64), 64) or None
     fish["bornAt"] = clamp_int(fish.get("bornAt"), clamp_int(current_born_at, int(now_utc().timestamp() * 1000)))
     fish["foodScore"] = clamp_int(fish.get("foodScore"), clamp_int(current_food_score, 0), 0)
     fish["inFeedRace"] = bool(fish.get("inFeedRace") if "inFeedRace" in fish else current.get("inFeedRace") if current else False)

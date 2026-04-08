@@ -13,8 +13,8 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "aquaworld.db"
-HOST = os.environ.get("AQUAWORLD_HOST", "127.0.0.1")
-PORT = int(os.environ.get("AQUAWORLD_PORT", "8000"))
+HOST = os.environ.get("AQUAWORLD_HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT") or os.environ.get("AQUAWORLD_PORT") or "8000")
 
 CONTEST_THEMES = [
     ("Cutest Fish", "Show off the fish everyone wants to keep forever."),
@@ -77,17 +77,20 @@ def iso_now() -> str:
 
 def contest_for_today(today: date | None = None) -> dict:
     today = today or date.today()
-    year, week, _ = today.isocalendar()
-    idx = (year * 53 + week) % len(CONTEST_THEMES)
+    idx = today.toordinal() % len(CONTEST_THEMES)
     title, description = CONTEST_THEMES[idx]
-    start = date.fromisocalendar(year, week, 1)
-    end = start + timedelta(days=6)
+    start = today
+    end = start + timedelta(days=1)
+    start_at = datetime.combine(start, datetime.min.time())
+    end_at = datetime.combine(end, datetime.min.time())
     return {
-        "period": f"{year}-W{week:02d}",
+        "period": start.isoformat(),
         "title": title,
         "description": description,
         "starts_on": start.isoformat(),
-        "ends_on": end.isoformat(),
+        "ends_on": (end - timedelta(days=1)).isoformat(),
+        "starts_at": start_at.isoformat(),
+        "ends_at": end_at.isoformat(),
     }
 
 
@@ -103,6 +106,8 @@ def row_to_entry(row: sqlite3.Row, voter_id: str | None = None, conn: sqlite3.Co
         "contest_period": row["contest_period"],
         "contest_title": row["contest_title"],
         "room_code": row["room_code"],
+        "owner_client_id": row["owner_client_id"],
+        "owner_id": row["owner_id"],
         "owner_name": row["owner_name"],
         "owner_color": row["owner_color"],
         "fish_id": row["fish_id"],
@@ -129,7 +134,6 @@ def get_global_state(voter_id: str | None = None) -> dict:
             SELECT * FROM fish_submissions
             WHERE contest_period = ?
             ORDER BY likes DESC, created_at ASC
-            LIMIT 12
             """,
             (contest["period"],),
         ).fetchall()
@@ -215,6 +219,8 @@ class AquaHandler(SimpleHTTPRequestHandler):
             return self.handle_submit(payload)
         if parsed.path == "/api/global/like":
             return self.handle_like(payload)
+        if parsed.path == "/api/global/remove":
+            return self.handle_remove(payload)
         if parsed.path == "/api/global/frenzy":
             return self.handle_frenzy(payload)
 
@@ -301,6 +307,21 @@ class AquaHandler(SimpleHTTPRequestHandler):
                 liked = True
             fresh = conn.execute("SELECT * FROM fish_submissions WHERE submission_id = ?", (submission_id,)).fetchone()
         self.write_json({"ok": True, "liked": liked, "entry": row_to_entry(fresh)})
+
+    def handle_remove(self, payload: dict) -> None:
+        submission_id = payload.get("submission_id")
+        client_id = (payload.get("client_id") or "").strip()
+        if not submission_id or not client_id:
+            return self.write_json({"ok": False, "error": "Missing removal data"}, 400)
+        with db() as conn:
+            row = conn.execute("SELECT * FROM fish_submissions WHERE submission_id = ?", (submission_id,)).fetchone()
+            if not row:
+                return self.write_json({"ok": True, "removed": False})
+            if row["owner_client_id"] != client_id:
+                return self.write_json({"ok": False, "error": "Only the owner can remove this submission"}, 403)
+            conn.execute("DELETE FROM fish_votes WHERE submission_id = ?", (submission_id,))
+            conn.execute("DELETE FROM fish_submissions WHERE submission_id = ?", (submission_id,))
+        self.write_json({"ok": True, "removed": True, "submission_id": submission_id})
 
     def handle_frenzy(self, payload: dict) -> None:
         submission_id = payload.get("submission_id")

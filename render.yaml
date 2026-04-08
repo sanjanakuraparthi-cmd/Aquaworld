@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: aquaworld
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 aquaworld_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11

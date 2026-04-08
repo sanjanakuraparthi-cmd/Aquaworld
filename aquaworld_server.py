@@ -19,6 +19,25 @@ PORT = int(os.environ.get("PORT") or os.environ.get("AQUAWORLD_PORT") or "8000")
 
 ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_MEMBER_TTL = timedelta(seconds=45)
+PUBLIC_ROOM_CODE = "OCEAN"
+PUBLIC_ROOM_OWNER_ID = "public_ocean"
+BLOCKED_WORDS = (
+    "asshole",
+    "bastard",
+    "bitch",
+    "bullshit",
+    "dick",
+    "fck",
+    "fuck",
+    "motherfucker",
+    "penis",
+    "pussy",
+    "rape",
+    "shit",
+    "slut",
+    "vagina",
+    "whore",
+)
 
 CONTEST_THEMES = [
     ("Cutest Fish", "Show off the fish everyone wants to keep forever."),
@@ -488,6 +507,61 @@ def clean_text(value: object, default: str = "", limit: int = 120) -> str:
     return text[:limit]
 
 
+def moderation_key(value: object) -> str:
+    return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+
+
+def contains_blocked_word(value: object) -> bool:
+    key = moderation_key(value)
+    return bool(key) and any(word in key for word in BLOCKED_WORDS)
+
+
+def safe_public_name(value: object, default: str = "Aquarist", limit: int = 40) -> str:
+    text = clean_text(value, default, limit)
+    return default if contains_blocked_word(text) else text
+
+
+def moderate_chat_text(value: object, limit: int = 100) -> str:
+    text = clean_text(value, "", limit)
+    if not text:
+        return ""
+    lowered = text.lower()
+    updated = text
+    replaced = False
+    for word in BLOCKED_WORDS:
+        if word in lowered:
+            replacement = "•" * len(word)
+            updated = updated.replace(word, replacement).replace(word.title(), replacement).replace(word.upper(), replacement)
+            replaced = True
+    if replaced:
+        return updated[:limit]
+    if contains_blocked_word(text):
+        return "[message moderated]"
+    return text
+
+
+def ensure_room_exists(conn: sqlite3.Connection, room_code: str, owner_id: str | None = None) -> sqlite3.Row:
+    code = normalize_room_code(room_code)
+    row = load_room_row(conn, code)
+    if row:
+        return row
+    now = iso_now()
+    conn.execute(
+        """
+        INSERT INTO rooms (room_code, owner_id, state_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            code,
+            clean_text(owner_id, PUBLIC_ROOM_OWNER_ID if code == PUBLIC_ROOM_CODE else uuid.uuid4().hex[:12], 64),
+            json.dumps(default_room_state(), separators=(",", ":")),
+            now,
+            now,
+        ),
+    )
+    return load_room_row(conn, code)
+
+
 def find_room_fish(state: dict, fish_id: str) -> tuple[dict | None, str | None]:
     for key in ("fishes", "plants"):
         for item in state.get(key, []):
@@ -514,7 +588,7 @@ def clean_fish_payload(raw_fish: dict, owner_id: str, current: dict | None = Non
     current_global_likes = current.get("globalLikes") if current else 0
     current_speech_expires = current.get("speechExpires") if current else 0
     fish["id"] = clean_text(fish.get("id") or uuid.uuid4().hex[:8], "fish", 64)
-    fish["name"] = clean_text(fish.get("name"), "Fish", 40)
+    fish["name"] = safe_public_name(fish.get("name"), clean_text(current.get("name"), "Fish", 40) if current else "Fish", 40)
     fish["kind"] = forced_kind or ("Plant" if clean_text(fish.get("kind"), "Fish", 10).lower() == "plant" else "Fish")
     fish["img"] = str(fish.get("img") or current_image or "")
     fish["personality"] = clean_text(fish.get("personality"), "Friendly", 24)
@@ -566,9 +640,9 @@ def apply_room_message(
     if msg_type == "CHAT":
         clean_message = {
             "type": "CHAT",
-            "name": clean_text(sender_name or member_row["name"], member_row["name"], 40),
+            "name": safe_public_name(sender_name or member_row["name"], member_row["name"], 40),
             "color": clean_text(sender_color or member_row["color"], member_row["color"] or "#9fb4d1", 24),
-            "text": clean_text(message.get("text"), "", 100),
+            "text": moderate_chat_text(message.get("text"), 100),
         }
     elif msg_type == "DRAW_SEG":
         clean_message = {
@@ -777,8 +851,8 @@ class AquaHandler(SimpleHTTPRequestHandler):
     def handle_submit(self, payload: dict) -> None:
         fish = payload.get("fish") or {}
         owner_client_id = (payload.get("client_id") or "").strip()
-        owner_name = (payload.get("owner_name") or "Aquarist").strip() or "Aquarist"
-        fish_name = (fish.get("name") or "Fish").strip() or "Fish"
+        owner_name = safe_public_name(payload.get("owner_name"), "Aquarist", 40)
+        fish_name = safe_public_name(fish.get("name"), "Fish", 40)
         image = fish.get("img") or ""
         if not owner_client_id or not image:
             return self.write_json({"ok": False, "error": "Missing fish data"}, 400)
@@ -893,7 +967,7 @@ class AquaHandler(SimpleHTTPRequestHandler):
 
     def handle_room_create(self, payload: dict) -> None:
         client_id = clean_text(payload.get("client_id"), uuid.uuid4().hex[:6], 64)
-        name = clean_text(payload.get("name"), "Aquarist", 40)
+        name = safe_public_name(payload.get("name"), "Aquarist", 40)
         color = clean_text(payload.get("color"), "#9fb4d1", 24)
         with db() as conn:
             room_code = generate_room_code(conn)
@@ -919,13 +993,15 @@ class AquaHandler(SimpleHTTPRequestHandler):
     def handle_room_join(self, payload: dict) -> None:
         room_code = normalize_room_code(payload.get("room_code"))
         client_id = clean_text(payload.get("client_id"), uuid.uuid4().hex[:6], 64)
-        name = clean_text(payload.get("name"), "Aquarist", 40)
+        name = safe_public_name(payload.get("name"), "Aquarist", 40)
         color = clean_text(payload.get("color"), "#9fb4d1", 24)
         if not room_code:
             return self.write_json({"ok": False, "error": "Missing room code"}, 400)
         try:
             with db() as conn:
                 room_row = load_room_row(conn, room_code)
+                if not room_row and room_code == PUBLIC_ROOM_CODE:
+                    room_row = ensure_room_exists(conn, PUBLIC_ROOM_CODE, PUBLIC_ROOM_OWNER_ID)
                 if not room_row:
                     raise ApiError(404, "Room not found")
                 cleanup_stale_members(conn, room_code, skip_client_id=client_id)
@@ -992,7 +1068,7 @@ class AquaHandler(SimpleHTTPRequestHandler):
     def handle_room_event(self, payload: dict) -> None:
         room_code = normalize_room_code(payload.get("room_code"))
         client_id = clean_text(payload.get("client_id"), "", 64)
-        name = clean_text(payload.get("name"), "Aquarist", 40)
+        name = safe_public_name(payload.get("name"), "Aquarist", 40)
         color = clean_text(payload.get("color"), "#9fb4d1", 24)
         message = payload.get("message")
         if not room_code or not client_id or not isinstance(message, dict):

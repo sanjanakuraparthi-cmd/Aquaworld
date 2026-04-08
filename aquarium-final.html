@@ -52,6 +52,15 @@
             background: rgba(11, 24, 40, 0.95);
             color: var(--text);
         }
+        #welcome-guide {
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(15, 32, 53, 0.75);
+            color: #9fb4d1;
+            font-size: 11px;
+            line-height: 1.45;
+        }
         #room-code {
             background: var(--panel2);
             padding: 4px 8px;
@@ -600,19 +609,25 @@
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <button id="create-room-btn" data-welcome-action="1" class="btn-primary" onclick="createRoom()">🌊 New</button>
-            <button id="focus-code-btn" data-welcome-action="1" class="btn-secondary" onclick="showJoin()">🔗 Focus Code</button>
+            <button id="public-room-btn" data-welcome-action="1" class="btn-secondary" onclick="joinPublicOcean()">🌍 Public Ocean</button>
         </div>
         <button id="join-linked-btn" data-welcome-action="1" class="btn-secondary" onclick="joinLinkedRoom()" style="display:none;max-width:none;">🔗 Join Shared Room</button>
         <button id="rejoin-btn" data-welcome-action="1" class="btn-secondary" onclick="rejoinLastRoom()" style="display:none;max-width:none;">↩️ Rejoin Room</button>
         <div id="join-prompt" style="display:block;">
             <label style="display:block;font-size:10px;color:#aaa;margin-bottom:4px;">Code or invite link</label>
             <div style="display:flex;gap:4px;">
-                <input id="room-input" type="text" placeholder="abc123 or pasted link" spellcheck="false" autocapitalize="none" autocorrect="off" style="flex:1;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:8px;border-radius:4px;font-size:13px;-webkit-user-select:text;user-select:text;pointer-events:auto;" onclick="this.focus();this.select();" onfocus="this.select();" onkeydown="if(event.key==='Enter')joinRoom()">
+                <input id="room-input" type="text" placeholder="abc123 or pasted link" spellcheck="false" autocapitalize="none" autocorrect="off" style="flex:1;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:8px;border-radius:4px;font-size:13px;-webkit-user-select:text;user-select:text;pointer-events:auto;" onkeydown="if(event.key==='Enter')joinRoom()">
                 <button id="paste-room-btn" data-welcome-action="1" class="btn-secondary" onclick="pasteRoomCode()" style="padding:8px 10px;">Paste</button>
                 <button id="join-room-btn" data-welcome-action="1" class="btn-secondary" onclick="joinRoom()" style="padding:8px 12px;">Go</button>
             </div>
         </div>
         <div id="welcome-status" aria-live="polite"></div>
+        <div id="welcome-guide">
+            <strong style="color:#fff;">How to play</strong><br>
+            <span>🌍 Public Ocean = one big shared tank for everyone</span><br>
+            <span>🔒 New = make a private room for friends</span><br>
+            <span>🏆 Contest = likes and rankings across all rooms</span>
+        </div>
     </div>
     <p style="color:#334;font-size:9px;max-width:300px;">Share code with friends - see fish instantly!</p>
 </div>
@@ -1001,6 +1016,11 @@ const PALETTE_DATA = [
 ];
 const PLAYER_PROFILE_KEY = 'aqPlayerProfileV1';
 const LAST_ROOM_KEY = 'aqLastRoomCodeV1';
+const PUBLIC_ROOM_CODE = 'OCEAN';
+const BLOCKED_WORDS = [
+    'asshole', 'bastard', 'bitch', 'bullshit', 'dick', 'fck', 'fuck',
+    'motherfucker', 'penis', 'pussy', 'rape', 'shit', 'slut', 'vagina', 'whore'
+];
 
 let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
 let users = {}, fishes = [], plants = [], bubbles = [], particles = [];
@@ -1053,6 +1073,68 @@ function normalizeRoomCode(raw) {
     const clean = text.replace(/[^A-Za-z0-9_-]/g, '');
     return clean.toLowerCase();
 }
+function moderationKey(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+function containsBlockedWord(value) {
+    const key = moderationKey(value);
+    return !!key && BLOCKED_WORDS.some(word => key.includes(word));
+}
+function sanitizePlayerName(value) {
+    const text = String(value || '').trim().slice(0, 40);
+    if (!text || containsBlockedWord(text)) return 'Aquarist';
+    return text;
+}
+function moderateChatText(value) {
+    const text = String(value || '').trim().slice(0, 100);
+    if (!text) return '';
+    let next = text;
+    let changed = false;
+    BLOCKED_WORDS.forEach(word => {
+        const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+        if (re.test(next)) {
+            next = next.replace(re, match => '•'.repeat(match.length));
+            changed = true;
+        }
+    });
+    if (!changed && containsBlockedWord(text)) {
+        return '[message moderated]';
+    }
+    return next;
+}
+function uniqueFishName(baseName, excludeId = '') {
+    const base = String(baseName || '').trim().slice(0, 40) || randName();
+    const used = new Set(
+        [...fishes, ...plants]
+            .filter(f => f.id !== excludeId)
+            .map(f => String(f.name || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+    if (!used.has(base.toLowerCase())) return base;
+    let suffix = 2;
+    let candidate = `${base} ${suffix}`;
+    while (used.has(candidate.toLowerCase())) {
+        suffix += 1;
+        candidate = `${base} ${suffix}`;
+    }
+    return candidate.slice(0, 40);
+}
+function prepareFishName(value, excludeId = '') {
+    const original = String(value || '').trim();
+    let base = original;
+    let reason = '';
+    if (!base || /^fish$/i.test(base)) {
+        base = randName();
+        reason = 'auto';
+    }
+    if (containsBlockedWord(base)) {
+        base = randName();
+        reason = 'moderated';
+    }
+    const unique = uniqueFishName(base, excludeId);
+    if (!reason && unique !== base) reason = 'duplicate';
+    return { name: unique, reason, original };
+}
 function loadPlayerProfile() {
     try {
         const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_KEY) || '{}');
@@ -1089,9 +1171,11 @@ function selectPlayerColor(color) {
 }
 function syncPlayerProfileFromInputs() {
     const nameInput = document.getElementById('name-input');
-    const nextName = (nameInput?.value || 'Aquarist').trim() || 'Aquarist';
+    const typedName = String(nameInput?.value || '').trim();
+    const nextName = sanitizePlayerName(typedName);
     myName = nextName;
     if (nameInput) nameInput.value = nextName;
+    if (typedName && typedName !== nextName) setWelcomeStatus('That name was softened to keep AquaWorld friendly.', 'warning');
     ensurePlayerIdentity();
     savePlayerProfile();
 }
@@ -1100,7 +1184,7 @@ function rememberPlayerNameDraft() {
     if (!nameInput) return;
     const typed = String(nameInput.value || '').trim();
     if (!typed) return;
-    myName = typed.slice(0, 40);
+    myName = sanitizePlayerName(typed);
     savePlayerProfile();
 }
 function getLastRoomCode() {
@@ -1582,6 +1666,21 @@ function initWelcome() {
         nameInput.addEventListener('change', rememberPlayerNameDraft);
         nameInput.addEventListener('blur', rememberPlayerNameDraft);
     }
+    if (roomInput) {
+        roomInput.addEventListener('input', () => {
+            const raw = roomInput.value;
+            if (!raw.trim()) {
+                updateLinkedRoomButton(hasCode || '');
+                return;
+            }
+            if (/[?&]room=|https?:/i.test(raw)) {
+                updateLinkedRoomButton(raw);
+            } else {
+                updateLinkedRoomButton('');
+            }
+            setWelcomeStatus('');
+        });
+    }
     if (hasCode) {
         updateLinkedRoomButton(hasCode);
         if (roomInput) roomInput.value = linkedRoomCode;
@@ -1617,7 +1716,6 @@ function showJoin() {
     setWelcomeStatus('Type or paste a room code to join your friends.', 'info');
     setTimeout(() => {
         input.focus();
-        input.select();
     }, 60);
 }
 
@@ -1636,11 +1734,18 @@ async function pasteRoomCode() {
         updateLinkedRoomButton(pastedInvite ? clean : '');
         setWelcomeStatus(pastedInvite ? `Invite ready for ${clean}.` : `Room code ${clean} pasted. Tap Go to join.`, 'success');
         input.focus();
-        input.select();
     } catch (e) {
         input.focus();
         setWelcomeStatus('Paste your room code or invite link here.', 'info');
     }
+}
+
+function joinPublicOcean() {
+    if (welcomeBusy) return;
+    document.getElementById('room-input').value = PUBLIC_ROOM_CODE;
+    updateLinkedRoomButton('');
+    setWelcomeStatus('Joining the shared Public Ocean...', 'info');
+    joinRoom(PUBLIC_ROOM_CODE);
 }
 
 function joinLinkedRoom() {
@@ -1653,7 +1758,7 @@ function joinLinkedRoom() {
     }
     document.getElementById('room-input').value = linkedRoomCode;
     setWelcomeStatus(`Joining room ${linkedRoomCode}...`, 'info');
-    joinRoom();
+    joinRoom(linkedRoomCode);
 }
 function rejoinLastRoom() {
     const code = getLastRoomCode();
@@ -1664,7 +1769,7 @@ function rejoinLastRoom() {
     document.getElementById('room-input').value = code;
     updateLinkedRoomButton('');
     setWelcomeStatus(`Rejoining room ${code}...`, 'info');
-    joinRoom();
+    joinRoom(code);
 }
 
 async function createRoom() {
@@ -1696,10 +1801,10 @@ async function createRoom() {
     }
 }
 
-async function joinRoom() {
+async function joinRoom(prefilledCode = '') {
     if (welcomeBusy) return;
     syncPlayerProfileFromInputs();
-    roomCode = normalizeRoomCode(document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
+    roomCode = normalizeRoomCode(prefilledCode || document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
     document.getElementById('room-input').value = roomCode;
     if (!roomCode) {
         setWelcomeStatus('Enter a room code or invite link first.', 'warning');
@@ -2346,11 +2451,16 @@ function cropCanvas(src) {
 function release() {
     const canvas = cropCanvas(drawC);
     const scale = parseFloat(document.getElementById('fish-scale').value) || 1;
-    const name = document.getElementById('fish-name').value || 'Fish';
+    const fishNameInput = document.getElementById('fish-name');
+    const preparedName = prepareFishName(fishNameInput.value, editingId || '');
+    const name = preparedName.name;
     const kind = document.getElementById('fish-type').value;
     const releasePixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
     const img = canvas.toDataURL();
-    if (!name.trim()) { notify('⚠️ Please enter a name', '#ff4444'); return; }
+    fishNameInput.value = name;
+    if (preparedName.reason === 'auto') notify(`✨ Named your ${kind.toLowerCase()} ${name}`, '#00c6ff');
+    else if (preparedName.reason === 'moderated') notify(`✨ Kept it cozy and renamed this one ${name}`, '#ffd166');
+    else if (preparedName.reason === 'duplicate') notify(`✨ ${name} was adjusted so every fish keeps a distinct name`, '#9fb4d1');
     if (![...releasePixels].some((value, index) => index % 4 === 3 && value > 0)) { notify('⚠️ Draw something first', '#ff4444'); return; }
     drawHist = [];
     dc.clearRect(0, 0, drawC.width, drawC.height);
@@ -2457,7 +2567,7 @@ function addFCard(obj, kind) {
     delBtn.style.opacity = ownFish ? '1' : '0.45';
     delBtn.onclick = () => removeFish(obj.id);
     const submitBtn = document.createElement('button');
-    submitBtn.textContent = '🏆';
+    submitBtn.textContent = 'Enter';
     submitBtn.title = canCompete ? 'Submit to global contest' : 'Only your fish can join';
     submitBtn.disabled = !canCompete;
     submitBtn.style.opacity = submitBtn.disabled ? '0.45' : '1';
@@ -2546,12 +2656,15 @@ function sendChat() {
     const input = document.getElementById('msg-input');
     const text = input.value.trim();
     if (!text) return;
+    const safeText = moderateChatText(text);
+    if (!safeText) return;
     resumeAudio();
     input.value = '';
-    sendMsg({ type: 'CHAT', name: myName, color: myColor, text });
-    appendChat(myName, myColor, text);
+    if (safeText !== text) notify('💬 Kept that message kind for the room.', '#ffd166');
+    sendMsg({ type: 'CHAT', name: myName, color: myColor, text: safeText });
+    appendChat(myName, myColor, safeText);
     const ownerFish = fishes.find(f => f.ownerId === myId);
-    if (ownerFish) { ownerFish.speech = text; ownerFish.speechExpires = Date.now() + 4000; }
+    if (ownerFish) { ownerFish.speech = safeText; ownerFish.speechExpires = Date.now() + 4000; }
     playSound('chat');
 }
 

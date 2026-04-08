@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
     <title>AquaWorld - Draw & Release Fish Together</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
-        html, body { width: 100%; height: 100%; }
+        html, body { width: 100%; height: 100%; -webkit-text-size-adjust: 100%; }
         :root {
             --bg: #06101c;
             --panel: #0b1828;
@@ -339,7 +339,7 @@
 
         /* RESPONSIVE - MOBILE */
         @media (max-width: 768px) {
-            body { overflow: hidden; }
+            body { overflow-x: hidden; overflow-y: auto; }
             #hdr {
                 padding: 6px;
                 font-size: 11px;
@@ -382,6 +382,13 @@
             }
             .menu-toggle {
                 display: block !important;
+            }
+            #welcome input,
+            #chat-input input,
+            #fish-settings input[type="text"],
+            #fish-settings select,
+            #hdr select {
+                font-size: 16px !important;
             }
         }
 

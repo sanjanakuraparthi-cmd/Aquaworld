@@ -616,7 +616,7 @@
 
 <div id="drawer-backdrop" onclick="closeDrawPanel()"></div>
 <div id="global-hub-backdrop" onclick="closeGlobalHub()"></div>
-<div id="notify"></div>
+<div id="notify" hidden style="display:none;"></div>
 
 <script>
 'use strict';
@@ -2064,10 +2064,14 @@ function dropDeco(emoji) {
 function notify(html, col) {
     const div = document.getElementById('notify');
     clearTimeout(notifyTimer);
+    div.hidden = false;
     div.textContent = String(html || '');
     div.style.borderColor = col;
     div.style.display = 'block';
-    notifyTimer = setTimeout(() => div.style.display = 'none', 2500);
+    notifyTimer = setTimeout(() => {
+        div.style.display = 'none';
+        div.hidden = true;
+    }, 2500);
 }
 
 function appendChat(name, color, text) {

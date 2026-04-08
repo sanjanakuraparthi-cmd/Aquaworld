@@ -1369,7 +1369,9 @@ function rememberPlayerNameDraft() {
     savePlayerProfile();
 }
 function getLastRoomCode() {
-    return normalizeRoomCode(localStorage.getItem(LAST_ROOM_KEY) || '').toUpperCase();
+    const clean = normalizeRoomCode(localStorage.getItem(LAST_ROOM_KEY) || '').toUpperCase();
+    if (clean === PUBLIC_ROOM_CODE) return '';
+    return clean;
 }
 function clearLastRoomCode() {
     localStorage.removeItem(LAST_ROOM_KEY);
@@ -1377,7 +1379,10 @@ function clearLastRoomCode() {
 }
 function saveLastRoomCode(code) {
     const clean = normalizeRoomCode(code).toUpperCase();
-    if (!clean) return;
+    if (!clean || clean === PUBLIC_ROOM_CODE) {
+        clearLastRoomCode();
+        return;
+    }
     localStorage.setItem(LAST_ROOM_KEY, clean);
     updateRejoinButton();
 }
@@ -1951,6 +1956,7 @@ async function pasteRoomCode() {
 
 function joinPublicOcean() {
     if (welcomeBusy) return;
+    clearLastRoomCode();
     document.getElementById('room-input').value = PUBLIC_ROOM_CODE;
     updateLinkedRoomButton('');
     setWelcomeStatus('Joining the shared Public Ocean...', 'info');

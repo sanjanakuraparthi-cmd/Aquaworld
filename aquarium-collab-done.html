@@ -903,6 +903,7 @@ const FISH_NAMES = ['Finn', 'Bubbles', 'Nemo', 'Coral', 'Marina', 'Splash', 'Wav
 const PALETTE_DATA = [
     { colors: ['#FF6B35','#FF8C42','#FFD700','#FF1493','#0072FF','#00BCD4','#00AA55','#8B4513'] }
 ];
+const PLAYER_PROFILE_KEY = 'aqPlayerProfileV1';
 
 let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
 let users = {}, fishes = [], plants = [], bubbles = [], particles = [];
@@ -953,6 +954,48 @@ function normalizeRoomCode(raw) {
     if (fromQuery) return fromQuery[1].toLowerCase();
     const clean = text.replace(/[^A-Za-z0-9_-]/g, '');
     return clean.toLowerCase();
+}
+function loadPlayerProfile() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_KEY) || '{}');
+        return {
+            clientId: String(parsed.clientId || '').trim(),
+            name: String(parsed.name || '').trim(),
+            color: String(parsed.color || '').trim()
+        };
+    } catch (e) {
+        return { clientId: '', name: '', color: '' };
+    }
+}
+function savePlayerProfile() {
+    localStorage.setItem(PLAYER_PROFILE_KEY, JSON.stringify({
+        clientId: myId || '',
+        name: myName || 'Aquarist',
+        color: myColor || '#FF6B35'
+    }));
+}
+function ensurePlayerIdentity() {
+    const stored = loadPlayerProfile();
+    if (stored.clientId) myId = stored.clientId;
+    else myId = `player_${rnd6()}${rnd6()}`;
+    if (stored.name) myName = stored.name;
+    if (stored.color && AV_COLORS.includes(stored.color)) myColor = stored.color;
+    savePlayerProfile();
+}
+function selectPlayerColor(color) {
+    myColor = color;
+    document.querySelectorAll('#color-picker button').forEach(b => {
+        b.style.border = b.dataset.color === color ? '2px solid white' : '2px solid transparent';
+    });
+    savePlayerProfile();
+}
+function syncPlayerProfileFromInputs() {
+    const nameInput = document.getElementById('name-input');
+    const nextName = (nameInput?.value || 'Aquarist').trim() || 'Aquarist';
+    myName = nextName;
+    if (nameInput) nameInput.value = nextName;
+    ensurePlayerIdentity();
+    savePlayerProfile();
 }
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -1223,8 +1266,11 @@ function findDecoNear(x, y) {
 }
 
 function initWelcome() {
+    ensurePlayerIdentity();
     const hasCode = new URLSearchParams(location.search).get('room');
     document.getElementById('join-prompt').style.display = 'block';
+    const nameInput = document.getElementById('name-input');
+    if (nameInput) nameInput.value = myName || 'Aquarist';
     if (hasCode) {
         linkedRoomCode = normalizeRoomCode(hasCode);
         document.getElementById('room-input').value = linkedRoomCode;
@@ -1238,15 +1284,13 @@ function initWelcome() {
     const picker = document.getElementById('color-picker');
     AV_COLORS.forEach(c => {
         const btn = document.createElement('button');
+        btn.dataset.color = c;
         btn.style.cssText = `width:35px;height:35px;background:${c};border:2px solid transparent;border-radius:3px;cursor:pointer;flex-shrink:0;`;
-        btn.onclick = () => {
-            myColor = c;
-            document.querySelectorAll('#color-picker button').forEach(b => b.style.border = '2px solid transparent');
-            btn.style.border = '2px solid white';
-        };
+        btn.onclick = () => selectPlayerColor(c);
         picker.appendChild(btn);
     });
-    document.querySelectorAll('#color-picker button')[0].click();
+    if (AV_COLORS.includes(myColor)) selectPlayerColor(myColor);
+    else document.querySelectorAll('#color-picker button')[0].click();
     initAudio();
     const firstInput = linkedRoomCode ? document.getElementById('name-input') : document.getElementById('name-input');
     setTimeout(() => {
@@ -1289,8 +1333,7 @@ function joinLinkedRoom() {
 }
 
 async function createRoom() {
-    myName = (document.getElementById('name-input').value || 'Aquarist').trim() || 'Aquarist';
-    myId = rnd6();
+    syncPlayerProfileFromInputs();
     roomCode = '';
     roomMeta = null;
     roomBootstrap = null;
@@ -1312,11 +1355,10 @@ async function createRoom() {
 }
 
 async function joinRoom() {
-    myName = (document.getElementById('name-input').value || 'Aquarist').trim() || 'Aquarist';
+    syncPlayerProfileFromInputs();
     roomCode = normalizeRoomCode(document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
     document.getElementById('room-input').value = roomCode;
     if (!roomCode) return alert('Enter a room code or invite link');
-    myId = rnd6();
     roomMeta = null;
     roomBootstrap = null;
     updateConnStatus('syncing');

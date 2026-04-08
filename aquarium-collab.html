@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>AquaWorld - Draw & Release Fish Together</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+        html, body { width: 100%; height: 100%; }
+        :root {
+            --bg: #06101c;
+            --panel: #0b1828;
+            --panel2: #0f2035;
+            --border: #162a44;
+            --accent: #0072ff;
+            --green: #00aa55;
+            --text: #e0e6f0;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            position: fixed;
+        }
+        input, textarea, select { -webkit-user-select: text; user-select: text; }
+
+        /* HEADER */
+        .hlogo { font-size: 14px; font-weight: 800; background: linear-gradient(90deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        #hdr {
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 10px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 100;
+            flex-wrap: wrap;
+        }
+        #room-code {
+            background: var(--panel2);
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+            color: var(--accent);
+            font-size: 11px;
+        }
+        #room-code:hover { background: var(--border); }
+        #users { display: flex; gap: 3px; flex-wrap: wrap; }
+        .user-avatar {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: bold;
+        }
+
+        /* MAIN LAYOUT */
+        #container {
+            display: flex;
+            height: calc(100vh - 40px);
+            gap: 0;
+        }
+        #mid {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg);
+        }
+        #aqC {
+            flex: 1;
+            background: linear-gradient(180deg, #0a1f3f 0%, #051014 100%);
+            display: block;
+            cursor: crosshair;
+            width: 100%;
+        }
+        #bot {
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            height: auto;
+            min-height: 100px;
+        }
+        #gal {
+            flex: 1;
+            border-right: 1px solid var(--border);
+            overflow-x: auto;
+            overflow-y: hidden;
+            display: flex;
+            gap: 6px;
+            padding: 6px;
+            background: var(--panel2);
+        }
+        .f-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 5px;
+            min-width: 70px;
+            text-align: center;
+            font-size: 9px;
+            flex-shrink: 0;
+        }
+        .f-card img { width: 100%; height: 45px; object-fit: contain; background: rgba(0,0,0,0.3); }
+        .f-card-name { margin: 2px 0; font-weight: bold; color: #0f0; font-size: 8px; }
+        .f-card-btns { display: flex; gap: 2px; margin-top: 3px; }
+        .f-card-btns button { flex: 1; padding: 2px 3px; font-size: 8px; border: none; background: var(--accent); color: white; cursor: pointer; border-radius: 2px; }
+
+        /* CHAT */
+        #chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            min-width: 150px;
+        }
+        #chat-msgs {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+            font-size: 10px;
+            line-height: 1.3;
+        }
+        .chat-msg { margin: 2px 0; word-break: break-word; }
+        .chat-msg strong { color: var(--accent); }
+        #chat-input {
+            display: flex;
+            gap: 3px;
+            padding: 6px;
+            border-top: 1px solid var(--border);
+        }
+        #chat-input input {
+            flex: 1;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            min-width: 80px;
+        }
+        #chat-input button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+
+        /* RIGHT PANEL */
+        #RP {
+            width: 100%;
+            max-width: 300px;
+            background: var(--panel);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 8px;
+            z-index: 200;
+        }
+        #RP h3 { font-size: 12px; margin-bottom: 6px; }
+        #edit-banner {
+            background: var(--accent);
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-bottom: 6px;
+            display: none;
+        }
+        #tool-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .tool-btn {
+            background: var(--panel2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .tool-btn:hover { background: var(--border); }
+        .tool-btn:active { transform: scale(0.95); }
+        .tool-btn.active { background: var(--accent); color: white; }
+
+        /* SLIDERS & INPUTS */
+        #brush-row {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+            align-items: center;
+        }
+        #brush-row input[type="range"] { flex: 1; height: 18px; }
+        #brush-swatch {
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        #color-palette {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 3px;
+            margin-bottom: 6px;
+        }
+        .color-swatch {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .color-swatch:active { transform: scale(1.1); }
+        .color-swatch.selected { outline: 2px solid white; outline-offset: 1px; }
+        #custom-color {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        #custom-color input { flex: 1; height: 24px; cursor: pointer; }
+
+        /* CANVAS */
+        #drawwrap { display: block; position: relative; margin-bottom: 6px; width: 100%; }
+        #drawC { display: block; cursor: crosshair; background: white; border: 1px solid var(--border); width: 100%; }
+        #ovlC { position: absolute; top:0; left:0; pointer-events:none; display:none; }
+
+        /* SETTINGS */
+        #fish-settings {
+            font-size: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #fish-settings label { display: flex; gap: 4px; align-items: center; }
+        #fish-settings input[type="text"] { flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 3px; border-radius: 2px; font-size: 10px; min-width: 60px; }
+        #fish-settings select { flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 3px; border-radius: 2px; font-size: 10px; }
+        .action-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .action-btns button {
+            background: var(--green);
+            color: white;
+            border: none;
+            padding: 6px 4px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s;
+        }
+        .action-btns button:active { transform: scale(0.95); }
+        .action-btns button.danger { background: #cc3333; }
+
+        /* WELCOME SCREEN */
+        #notify {
+            position: fixed;
+            top: 50px;
+            right: 8px;
+            background: var(--panel);
+            border: 1px solid var(--accent);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 10px;
+            max-width: 90vw;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn { from { transform: translateX(300px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        #welcome {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 15px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #welcome h1 { color: var(--accent); font-size: 24px; margin-bottom: 10px; }
+        #welcome input { padding: 8px; border: 1px solid var(--accent); background: var(--panel); color: var(--text); border-radius: 3px; font-size: 14px; width: 100%; max-width: 280px; }
+        #welcome button { padding: 10px 20px; border: none; border-radius: 3px; cursor: pointer; font-size: 14px; width: 100%; max-width: 280px; }
+        .btn-primary { background: var(--green); color: white; }
+        .btn-secondary { background: var(--accent); color: white; }
+
+        /* HEADER BUTTONS */
+        #hdr button, #hdr select {
+            background: var(--panel2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #hdr button:active { transform: scale(0.95); }
+
+        /* RESPONSIVE - MOBILE */
+        @media (max-width: 768px) {
+            #hdr {
+                padding: 6px;
+                font-size: 11px;
+                gap: 6px;
+            }
+            #bot {
+                min-height: 80px;
+                flex-wrap: wrap;
+            }
+            #gal {
+                flex-basis: 100%;
+                height: 60px;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            #chat {
+                flex: 1;
+                border-right: none;
+                min-width: 0;
+            }
+            #RP {
+                display: none;
+                position: fixed;
+                right: 0;
+                top: 40px;
+                bottom: 0;
+                width: 280px;
+                max-width: 80vw;
+                border-left: 1px solid var(--border);
+                border-radius: 0;
+                z-index: 150;
+                transform: translateX(100%);
+                transition: transform 0.3s ease;
+            }
+            #RP.open {
+                display: flex;
+                transform: translateX(0);
+                box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+            }
+            .menu-toggle {
+                display: block !important;
+            }
+        }
+
+        /* RESPONSIVE - SMALL MOBILE */
+        @media (max-width: 480px) {
+            #hdr {
+                padding: 5px;
+                font-size: 10px;
+                gap: 4px;
+            }
+            .hlogo { font-size: 12px; }
+            #room-code { font-size: 10px; padding: 2px 4px; }
+            #hdr button, #hdr select { padding: 3px 6px; font-size: 10px; }
+            #chat-input { padding: 4px; gap: 2px; }
+            #chat-input input, #chat-input button { font-size: 10px; }
+            #RP {
+                width: 100%;
+                max-width: 100vw;
+            }
+            .f-card { min-width: 60px; font-size: 8px; }
+            .f-card img { height: 40px; }
+        }
+
+        /* LANDSCAPE MODE */
+        @media (max-height: 500px) {
+            #bot { min-height: 70px; }
+            #gal { height: 50px; }
+            #chat-msgs { font-size: 9px; padding: 4px; }
+            #chat-msg { margin: 1px 0; }
+        }
+
+        /* TABLET */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            #RP { max-width: 260px; }
+            #tool-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* HIDE/SHOW ELEMENTS */
+        .menu-toggle { display: none; }
+
+        /* TOUCH IMPROVEMENTS */
+        @media (hover: none) and (pointer: coarse) {
+            button, input[type="button"], select { min-height: 44px; }
+            .tool-btn { padding: 8px; }
+            #hdr button { min-height: 38px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="hdr">
+    <span class="hlogo">🐠 AquaWorld</span>
+    <div id="room-pill" onclick="copyLink()" title="Click to copy" style="cursor:pointer;background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:2px 6px;font-size:10px;display:flex;align-items:center;gap:4px;">
+      <span id="room-code" style="color:#aaccff;letter-spacing:.05em;font-family:monospace;">———</span>
+      <span id="conn-status" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff4444;" title="Disconnected"></span>
+    </div>
+    <div id="users"></div>
+    <div style="flex:1;"></div>
+    <select id="theme-select" onchange="setTheme(this.value)"><option value="Ocean">🌊</option><option value="Tropical">🌺</option><option value="DeepSea">🌑</option><option value="Sunset">🌅</option></select>
+    <button id="deco-btn" onclick="toggleDecoPanel(this)">🎭</button>
+    <button onclick="emptyTank()">🧹</button>
+    <button id="theme-btn" onclick="toggleNight()">🌙</button>
+    <button id="sound-btn" onclick="toggleSound()">🔊</button>
+    <input type="range" min="0" max="1" step="0.05" value="0.5" oninput="setVolume(this.value)" title="Volume" style="width:55px;">
+    <button onclick="screenshotAquarium()" title="Screenshot">📸</button>
+    <button onclick="showAchievements()" title="Achievements">🏆</button>
+    <span id="coin-display" style="font-size:11px;color:#FFD700;">🪙 0</span>
+    <button id="draw-toggle" class="menu-toggle" onclick="document.getElementById('RP').classList.toggle('open')">✏️</button>
+</div>
+
+<div id="welcome">
+    <div style="text-align:center;margin-bottom:10px;">
+        <div style="font-size:40px;">🐠</div>
+        <h1>AquaWorld</h1>
+        <p style="color:#556;font-size:11px;">Draw, release, swim together!</p>
+    </div>
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:15px;width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+            <label style="display:block;font-size:10px;color:#aaa;margin-bottom:4px;text-transform:uppercase;">Name</label>
+            <input id="name-input" type="text" placeholder="Your name" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:4px;font-size:13px;">
+        </div>
+        <div>
+            <label style="display:block;font-size:10px;color:#aaa;margin-bottom:4px;text-transform:uppercase;">Color</label>
+            <div id="color-picker" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <button class="btn-primary" onclick="createRoom()">🌊 New</button>
+            <button class="btn-secondary" onclick="showJoin()">🔗 Join</button>
+        </div>
+        <div id="join-prompt" style="display:none;">
+            <label style="display:block;font-size:10px;color:#aaa;margin-bottom:4px;">Code</label>
+            <div style="display:flex;gap:4px;">
+                <input id="room-input" type="text" placeholder="abc123" style="flex:1;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:8px;border-radius:4px;font-size:13px;text-transform:uppercase;" onkeydown="if(event.key==='Enter')joinRoom()">
+                <button class="btn-secondary" onclick="joinRoom()" style="padding:8px 12px;">Go</button>
+            </div>
+        </div>
+    </div>
+    <p style="color:#334;font-size:9px;max-width:300px;">Share code with friends - see fish instantly!</p>
+</div>
+
+<div id="container" style="display:none;">
+    <div id="mid">
+        <canvas id="aqC"></canvas>
+        <div id="bot">
+            <div id="gal"></div>
+            <div id="chat">
+                <div id="chat-msgs"></div>
+                <div id="quick-chat" style="display:flex;gap:3px;padding:2px 4px;flex-wrap:wrap;">
+                    <button onclick="quickChat('👋 Hi!')" style="font-size:10px;padding:2px 6px;">👋</button>
+                    <button onclick="quickChat('🐟 Nice fish!')" style="font-size:10px;padding:2px 6px;">🐟</button>
+                    <button onclick="quickChat('😮 Wow!')" style="font-size:10px;padding:2px 6px;">😮</button>
+                    <button onclick="quickChat('❤️')" style="font-size:10px;padding:2px 6px;">❤️</button>
+                    <button onclick="quickChat('🫧 Feed them!')" style="font-size:10px;padding:2px 6px;">🫧</button>
+                </div>
+                <div id="chat-input">
+                    <input type="text" id="msg-input" placeholder="Message..." onkeydown="if(event.key==='Enter')sendChat()">
+                    <button onclick="sendChat()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="RP">
+        <h3>✏️ Draw</h3>
+        <div id="edit-banner">Editing: <span id="edit-name"></span></div>
+
+        <div id="tool-grid"></div>
+
+        <div id="brush-row">
+            <input type="range" id="brush-size" min="1" max="40" value="3" style="flex:1;" oninput="brushSize=+this.value;document.getElementById('sz-lbl').textContent=this.value+'px'">
+            <span id="sz-lbl" style="font-size:9px;color:#999;min-width:28px;text-align:right;">3px</span>
+            <div id="brush-swatch"></div>
+        </div>
+
+        <div id="color-palette"></div>
+        <div id="custom-color"><input type="color" id="color-picker-custom" value="#FF6B35"></div>
+
+        <div id="drawwrap">
+          <canvas id="drawC" width="240" height="180" style="display:block;cursor:crosshair;border:1px solid var(--border);background:white;width:100%;"></canvas>
+          <canvas id="ovlC" width="240" height="180" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;"></canvas>
+        </div>
+
+        <div id="fish-settings">
+            <label>Name: <input type="text" id="fish-name" value="Fish"><button onclick="document.getElementById('fish-name').value=randName()" style="background:none;border:1px solid var(--border);color:#aaa;cursor:pointer;padding:2px 4px;font-size:9px;flex-shrink:0;">🎲</button></label>
+            <label>Type:<select id="fish-type"><option value="Fish">🐠 Fish</option><option value="Plant">🌿 Plant</option></select></label>
+            <label>Speed:<select id="fish-speed"><option value="Lazy">Lazy</option><option value="Calm" selected>Calm</option><option value="Fast">Fast</option><option value="Turbo">Turbo</option></select></label>
+            <label>Size: <input type="range" id="fish-scale" min="0.5" max="3" step="0.1" value="1" style="flex:1;" oninput="document.getElementById('scale-lbl').textContent=Math.round(this.value*100)+'%'"><span id="scale-lbl" style="font-size:9px;min-width:30px;">100%</span></label>
+        </div>
+
+        <div class="action-btns">
+            <button onclick="undoStroke()">↩️ Undo</button>
+            <button onclick="redoStroke()">↪️ Redo</button>
+            <button id="mirror-btn" onclick="toggleMirror()">🪞 Mirror</button>
+            <button onclick="clearDraw()" class="danger">🗑️ Clear</button>
+            <button onclick="release()" style="grid-column:1/-1;background:var(--green);">🐟 Release</button>
+            <button onclick="undoRelease()" style="grid-column:1/-1;background:var(--green);">↪️ Undo Release</button>
+        </div>
+    </div>
+</div>
+
+<div id="notify"></div>
+
+<script>
+'use strict';
+
+// Audio system
+let audioEnabled = true;
+function initAudio() {
+    try { window.audioContext = window.audioContext || new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) { console.log('Audio not available'); }
+}
+function playSound(type) {
+    if (!audioEnabled || !window.audioContext) return;
+    try {
+        const ctx = window.audioContext, now = ctx.currentTime;
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        const v = volume * 0.2;
+        const freqMap = { release:[500,200,0.25], click:[700,600,0.08], chat:[800,1000,0.12], bubble:[400,600,0.15], achievement:[600,1200,0.4] };
+        const [f1,f2,dur] = freqMap[type] || freqMap.click;
+        osc.frequency.setValueAtTime(f1, now);
+        osc.frequency.exponentialRampToValueAtTime(f2, now + dur);
+        gain.gain.setValueAtTime(v, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        osc.start(now); osc.stop(now + dur);
+    } catch(e) {}
+}
+function setVolume(v) { volume = parseFloat(v); localStorage.setItem('aqVolume', v); }
+function unlockAch(key) {
+    if (achievements[key]) return;
+    achievements[key] = true;
+    const a = ACHIEVEMENTS[key];
+    notify(`${a.emoji} Achievement: ${a.name}`, '#FFD700');
+    playSound('achievement');
+    coins += 50; updateCoins();
+    localStorage.setItem('aqAchievements', JSON.stringify(achievements));
+    localStorage.setItem('aqCoins', coins);
+}
+function updateCoins() {
+    const el = document.getElementById('coin-display');
+    if (el) el.textContent = `🪙 ${coins}`;
+}
+function screenshotAquarium() {
+    const c = document.createElement('canvas');
+    c.width = aqC.width; c.height = aqC.height;
+    const cx = c.getContext('2d');
+    cx.drawImage(aqC, 0, 0);
+    cx.fillStyle = 'rgba(0,0,0,0.6)';
+    cx.fillRect(10, c.height - 40, 260, 30);
+    cx.fillStyle = '#fff'; cx.font = 'bold 14px sans-serif';
+    cx.fillText(`🐟 AquaWorld by ${myName}`, 20, c.height - 20);
+    const link = document.createElement('a');
+    link.download = `aquarium-${Date.now()}.png`;
+    link.href = c.toDataURL(); link.click();
+    notify('📸 Screenshot saved!', '#00c6ff');
+}
+function toggleSound() {
+    audioEnabled = !audioEnabled;
+    document.getElementById('sound-btn').textContent = audioEnabled ? '🔊' : '🔇';
+}
+
+const AV_COLORS = ['#FF6B35', '#00AA55', '#0072FF', '#FFB900', '#FF1744', '#00BCD4', '#9C27B0', '#8B4513'];
+const FISH_NAMES = ['Finn', 'Bubbles', 'Nemo', 'Coral', 'Marina', 'Splash', 'Wave', 'Tide', 'Reef', 'Sandy'];
+const PALETTE_DATA = [
+    { colors: ['#FF6B35','#FF8C42','#FFD700','#FF1493','#0072FF','#00BCD4','#00AA55','#8B4513'] }
+];
+
+let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
+let peer = null, conns = {}, users = {}, fishes = [], plants = [], bubbles = [], decos = [], particles = [];
+let tool = 'pen', brushColor = '#FF6B35', brushSize = 3, drawOpacity = 1, drawing = false, drawHist = [], redoHist = [], releaseHist = [];
+let editingId = null, nightMode = false, currentTheme = 'Ocean', mirrorMode = false;
+let coins = 0, level = 1, achievements = {}, volume = 0.5;
+const PERSONALITIES = ['Speedy','Sleepy','Chaotic','Friendly','Shy','Curious','Brave','Dreamy'];
+const ACHIEVEMENTS = {
+    first_fish:{name:'First Fish',emoji:'🐟',desc:'Release your first fish'},
+    ten_fish:{name:'10 Fish Released',emoji:'🎉',desc:'Release 10 fish'},
+    first_plant:{name:'Green Thumb',emoji:'🌿',desc:'Plant your first seaweed'},
+    multi_artist:{name:'Multiplayer Artist',emoji:'🎨',desc:'Draw in a shared room'},
+    night_diver:{name:'Night Diver',emoji:'🌙',desc:'Enable night mode'},
+    coral:{name:'Coral Collector',emoji:'🪸',desc:'Drop 5 decorations'}
+};
+let tick = 0, aqC, ac, drawC, dc, ovlC, oc;
+
+const THEMES = {
+    Ocean: { sky: '#0a1f3f', bottom: '#051014' },
+    Tropical: { sky: '#1a3a4a', bottom: '#0a2030' },
+    DeepSea: { sky: '#000814', bottom: '#001028' },
+    Sunset: { sky: '#3a1a0a', bottom: '#2a0a1a' }
+};
+
+function rnd6() { return Math.random().toString(36).substr(2,6); }
+
+function initWelcome() {
+    const hasCode = new URLSearchParams(location.search).get('room');
+    if (hasCode) {
+        document.getElementById('room-input').value = hasCode.toUpperCase();
+        document.getElementById('join-prompt').style.display = 'block';
+    }
+
+    const picker = document.getElementById('color-picker');
+    AV_COLORS.forEach(c => {
+        const btn = document.createElement('button');
+        btn.style.cssText = `width:35px;height:35px;background:${c};border:2px solid transparent;border-radius:3px;cursor:pointer;flex-shrink:0;`;
+        btn.onclick = () => {
+            myColor = c;
+            document.querySelectorAll('#color-picker button').forEach(b => b.style.border = '2px solid transparent');
+            btn.style.border = '2px solid white';
+        };
+        picker.appendChild(btn);
+    });
+    document.querySelectorAll('#color-picker button')[0].click();
+    initAudio();
+}
+
+function showJoin() {
+    document.getElementById('join-prompt').style.display = 'block';
+    document.getElementById('room-input').focus();
+}
+
+function createRoom() {
+    myName = document.getElementById('name-input').value || 'Aquarist';
+    roomCode = rnd6();
+    isHost = true;
+    myId = roomCode;
+    start();
+}
+
+function joinRoom() {
+    myName = document.getElementById('name-input').value || 'Aquarist';
+    roomCode = document.getElementById('room-input').value || '';
+    if (!roomCode) return alert('Enter room code');
+    myId = rnd6();
+    start();
+}
+
+function start() {
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('container').style.display = 'flex';
+
+    aqC = document.getElementById('aqC');
+    ac = aqC.getContext('2d');
+    drawC = document.getElementById('drawC');
+    dc = drawC.getContext('2d');
+    ovlC = document.getElementById('ovlC');
+    oc = ovlC.getContext('2d');
+
+    buildToolGrid();
+    buildPalette();
+    setTool('pen');
+    selectColor(myColor);
+
+    resizeAq();
+    window.addEventListener('resize', resizeAq);
+
+    drawC.addEventListener('mousedown', onDown, { passive: false });
+    drawC.addEventListener('mousemove', onMove, { passive: false });
+    drawC.addEventListener('mouseup', onUp, { passive: false });
+    drawC.addEventListener('touchstart', e => { e.preventDefault(); onDown(e.touches[0]); }, { passive: false });
+    drawC.addEventListener('touchmove', e => { e.preventDefault(); onMove(e.touches[0]); }, { passive: false });
+    drawC.addEventListener('touchend', e => { e.preventDefault(); onUp(e.changedTouches[0]); }, { passive: false });
+
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoStroke(); }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redoStroke(); }
+    });
+
+    // Load progression
+    coins = parseInt(localStorage.getItem('aqCoins') || '0');
+    achievements = JSON.parse(localStorage.getItem('aqAchievements') || '{}');
+    volume = parseFloat(localStorage.getItem('aqVolume') || '0.5');
+    updateCoins();
+
+    loadStorage();
+    addUser(myId, myName, myColor);
+
+    if (isHost) initPeer(myId); else { initPeer(myId); setTimeout(() => connectTo(roomCode), 500); }
+    loop();
+}
+
+function buildToolGrid() {
+    const tools = [
+        { label: '✏️', value: 'pen' }, { label: '🪣', value: 'fill' }, { label: '🧹', value: 'eraser' },
+        { label: '💨', value: 'spray' }, { label: '🖊️', value: 'line' }, { label: '▭', value: 'rect' },
+        { label: '⬭', value: 'oval' }, { label: '△', value: 'tri' }, { label: '⭐', value: 'star' }, { label: '🔍', value: 'eye' }
+    ];
+    const grid = document.getElementById('tool-grid');
+    grid.innerHTML = '';
+    tools.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'tool-btn';
+        btn.textContent = t.label;
+        btn.dataset.tool = t.value;
+        btn.title = t.label;
+        btn.onclick = () => setTool(t.value);
+        grid.appendChild(btn);
+    });
+}
+
+function buildPalette() {
+    const pal = document.getElementById('color-palette');
+    pal.innerHTML = '';
+    PALETTE_DATA[0].colors.forEach(c => {
+        const sw = document.createElement('div');
+        sw.className = 'color-swatch';
+        sw.style.background = c;
+        sw.dataset.color = c;
+        sw.title = c;
+        sw.onclick = () => selectColor(c);
+        pal.appendChild(sw);
+    });
+}
+
+function setTool(t) {
+    tool = t;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`[data-tool="${t}"]`);
+    if (btn) btn.classList.add('active');
+}
+
+function selectColor(hex) {
+    brushColor = hex;
+    document.getElementById('brush-swatch').style.background = hex;
+    document.querySelectorAll('.color-swatch').forEach(s => {
+        s.classList.toggle('selected', s.dataset.color === hex);
+    });
+    if (tool === 'eraser') setTool('pen');
+}
+
+function resizeAq() {
+    const r = aqC.getBoundingClientRect();
+    aqC.width = r.width;
+    aqC.height = r.height;
+}
+
+function initPeer(id) {
+    try {
+        peer = new Peer(id, { debug: 0 });
+        peer.on('open', pid => {
+            myId = pid;
+            if (isHost) roomCode = pid;
+            updateHdr();
+            updateConnStatus(true);
+        });
+        peer.on('connection', conn => {
+            setupConn(conn);
+            if (isHost) setTimeout(() => {
+                const msg = { type: 'INIT', fishes, plants, decos, users: Object.values(users), theme: currentTheme, night: nightMode };
+                conn.send(msg);
+            }, 100);
+        });
+        peer.on('error', err => { console.error('Peer error:', err); updateConnStatus(false); });
+    } catch (e) {
+        console.error('Peer init error:', e);
+        updateConnStatus(false);
+    }
+}
+
+function connectTo(code) {
+    if (!peer) return setTimeout(() => connectTo(code), 100);
+    const conn = peer.connect(code);
+    conn.on('open', () => {
+        setupConn(conn);
+        sendMsg({ type: 'HELLO', name: myName, color: myColor });
+        updateConnStatus(true);
+    });
+    conn.on('error', err => { console.error('Connection error:', err); updateConnStatus(false); });
+}
+
+function setupConn(conn) {
+    conns[conn.peer] = conn;
+    conn.on('data', d => handleMsg(d, conn.peer));
+    conn.on('close', () => {
+        const u = users[conn.peer];
+        if (u) notify(`👋 ${u.name} left`, '#888');
+        delete conns[conn.peer]; delete users[conn.peer]; updateHdr();
+        if (!isHost && Object.keys(conns).length === 0) {
+            updateConnStatus(false);
+            // Auto-reconnect attempts
+            let tries = 0;
+            const retry = () => {
+                if (tries++ > 5) return;
+                notify('🔄 Reconnecting...', '#ffa500');
+                try { connectTo(roomCode); } catch(e){}
+                setTimeout(() => { if (Object.keys(conns).length === 0) retry(); }, 2000);
+            };
+            setTimeout(retry, 1000);
+        }
+    });
+}
+
+function broadcast(msg, skip) {
+    Object.entries(conns).forEach(([id, conn]) => {
+        if (skip && id === skip) return;
+        try { conn.send(msg); } catch(e) {}
+    });
+}
+
+function sendMsg(msg) {
+    if (isHost) broadcast(msg); else {
+        const hostConn = Object.values(conns)[0];
+        if (hostConn && hostConn.open) try { hostConn.send(msg); } catch(e) {}
+    }
+}
+
+function handleMsg(d, from) {
+    if (!d.type) return;
+    if (d.type === 'HELLO') {
+        addUser(from, d.name, d.color);
+        notify(`👋 ${d.name} joined`, d.color);
+        playSound('release');
+        sendMsg({ type: 'USER_JOIN', id: myId, name: myName, color: myColor });
+    } else if (d.type === 'USER_JOIN') {
+        if (!users[d.id]) notify(`👋 ${d.name} joined`, d.color);
+        addUser(d.id, d.name, d.color);
+    } else if (d.type === 'INIT') {
+        fishes = d.fishes || []; plants = d.plants || []; decos = d.decos || [];
+        Object.assign(users, d.users.reduce((a, u) => { a[u.id] = u; return a; }, {}));
+        currentTheme = d.theme || 'Ocean'; nightMode = d.night || false;
+        rebuildGal(); updateHdr(); setTheme(currentTheme);
+        if (nightMode) updateNightMode();
+    } else if (d.type === 'FISH_ADD') {
+        if (d.kind === 'Fish') fishes.push(d.fish); else plants.push(d.fish);
+        rebuildGal(); saveStorage();
+    } else if (d.type === 'FISH_DEL') {
+        fishes = fishes.filter(f => f.id !== d.id); plants = plants.filter(f => f.id !== d.id);
+        rebuildGal(); saveStorage();
+    } else if (d.type === 'FISH_EDIT') {
+        const f = d.fish; fishes = fishes.filter(x => x.id !== d.id); plants = plants.filter(x => x.id !== d.id);
+        if (f.kind === 'Fish') fishes.push(f); else plants.push(f);
+        delete imgCache[f.img]; rebuildGal(); saveStorage();
+    } else if (d.type === 'CHAT') {
+        appendChat(d.name, d.color, d.text);
+        // Show speech bubble above a fish owned by sender
+        const ownerFish = fishes.find(f => f.ownerId === from);
+        if (ownerFish) { ownerFish.speech = d.text; ownerFish.speechExpires = Date.now() + 4000; }
+        playSound('release');
+    } else if (d.type === 'DECO') {
+        decos.push(d.deco); saveStorage();
+    }
+}
+
+function updateConnStatus(connected) {
+    const indicator = document.getElementById('conn-status');
+    indicator.style.background = connected ? '#00ff00' : '#ff4444';
+}
+
+function addUser(id, name, color) {
+    users[id] = { id, name, color };
+    updateHdr();
+}
+
+function updateHdr() {
+    document.getElementById('room-code').textContent = roomCode || '———';
+    const usersDiv = document.getElementById('users');
+    usersDiv.innerHTML = '';
+    Object.values(users).forEach(u => {
+        const av = document.createElement('div');
+        av.className = 'user-avatar';
+        av.style.background = u.color;
+        av.title = u.name;
+        av.textContent = u.name[0].toUpperCase();
+        usersDiv.appendChild(av);
+    });
+}
+
+let lastX = 0, lastY = 0, startX = 0, startY = 0;
+
+function onDown(e) {
+    const pos = getPos(e);
+    if (!pos) return;
+    if (tool === 'eye') {
+        const px = Math.max(0, Math.min(drawC.width - 1, ~~pos.x));
+        const py = Math.max(0, Math.min(drawC.height - 1, ~~pos.y));
+        const d = dc.getImageData(px, py, 1, 1).data;
+        if (d[3] > 10) {
+            const hex = '#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+            selectColor(hex);
+            document.getElementById('color-picker-custom').value = hex;
+        }
+        return;
+    }
+    drawing = true; startX = pos.x; startY = pos.y; lastX = pos.x; lastY = pos.y;
+    if (tool === 'pen' || tool === 'eraser') {
+        saveHist();
+        dc.globalAlpha = drawOpacity;
+        if (tool === 'eraser') { dc.globalCompositeOperation = 'destination-out'; dc.lineWidth = brushSize * 3; }
+        else { dc.globalCompositeOperation = 'source-over'; dc.strokeStyle = brushColor; dc.lineWidth = brushSize; }
+        dc.lineCap = 'round'; dc.lineJoin = 'round';
+        dc.beginPath(); dc.moveTo(pos.x, pos.y);
+    } else if (tool === 'fill') {
+        saveHist(); floodFill(pos.x, pos.y, brushColor); drawing = false;
+    } else if (tool === 'spray') {
+        saveHist(); doSpray(pos.x, pos.y);
+    }
+}
+
+function onMove(e) {
+    if (!drawing) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    if (tool === 'pen' || tool === 'eraser') {
+        const mid = { x: (lastX + pos.x) / 2, y: (lastY + pos.y) / 2 };
+        dc.quadraticCurveTo(lastX, lastY, mid.x, mid.y); dc.stroke(); dc.beginPath(); dc.moveTo(mid.x, mid.y);
+        if (mirrorMode && tool === 'pen') {
+            const cw = drawC.width;
+            dc.save(); dc.beginPath();
+            dc.moveTo(cw - lastX, lastY);
+            dc.quadraticCurveTo(cw - lastX, lastY, cw - mid.x, mid.y);
+            dc.stroke(); dc.restore();
+            dc.beginPath(); dc.moveTo(mid.x, mid.y);
+        }
+    } else if (tool === 'spray') {
+        doSpray(pos.x, pos.y);
+    }
+    lastX = pos.x; lastY = pos.y;
+}
+
+function onUp(e) {
+    if (!drawing) return;
+    if (tool === 'pen' || tool === 'eraser') {
+        dc.lineTo(lastX, lastY); dc.stroke(); dc.globalCompositeOperation = 'source-over'; dc.globalAlpha = 1;
+    }
+    drawing = false;
+}
+
+function doSpray(cx, cy) {
+    const r = brushSize * 7 + 5, density = Math.ceil(brushSize * 2.5 + 8);
+    dc.globalAlpha = drawOpacity * 0.7; dc.fillStyle = brushColor;
+    for (let i = 0; i < density; i++) {
+        const angle = Math.random() * Math.PI * 2, dist = Math.random() * r;
+        const px = cx + Math.cos(angle) * dist, py = cy + Math.sin(angle) * dist;
+        dc.beginPath(); dc.arc(px, py, Math.random() * 1.2 + 0.3, 0, Math.PI * 2); dc.fill();
+    }
+    dc.globalAlpha = 1;
+}
+
+function getPos(e) {
+    const r = drawC.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (drawC.width / r.width), y: (e.clientY - r.top) * (drawC.height / r.height) };
+}
+
+function floodFill(px, py, hex) {
+    const W = drawC.width, H = drawC.height;
+    const id = dc.getImageData(0, 0, W, H);
+    const data = id.data;
+    px = Math.max(0, Math.min(W - 1, ~~px)); py = Math.max(0, Math.min(H - 1, ~~py));
+    const target = [data[4*(py*W+px)], data[4*(py*W+px)+1], data[4*(py*W+px)+2], data[4*(py*W+px)+3]];
+    const rgb = hexToRgb(hex);
+    if (target[0]===rgb.r && target[1]===rgb.g && target[2]===rgb.b && target[3]===255) return;
+    const visited = new Uint8Array(W * H);
+    const stack = [[px, py]];
+    while (stack.length) {
+        const [x, y] = stack.pop();
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        const idx = y * W + x;
+        if (visited[idx]) continue;
+        visited[idx] = 1;
+        const i4 = idx * 4;
+        if (data[i4]!==target[0] || data[i4+1]!==target[1] || data[i4+2]!==target[2] || data[i4+3]!==target[3]) continue;
+        data[i4] = rgb.r; data[i4+1] = rgb.g; data[i4+2] = rgb.b; data[i4+3] = 255;
+        stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+    }
+    dc.putImageData(id, 0, 0);
+}
+
+function hexToRgb(hex) {
+    return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16) };
+}
+
+function saveHist() {
+    if (drawHist.length >= 30) drawHist.shift();
+    drawHist.push(dc.getImageData(0, 0, drawC.width, drawC.height));
+    redoHist = [];
+}
+
+function undoStroke() {
+    if (drawHist.length === 0) return;
+    redoHist.push(dc.getImageData(0, 0, drawC.width, drawC.height));
+    dc.putImageData(drawHist.pop(), 0, 0);
+    playSound('click');
+}
+function redoStroke() {
+    if (redoHist.length === 0) return;
+    drawHist.push(dc.getImageData(0, 0, drawC.width, drawC.height));
+    dc.putImageData(redoHist.pop(), 0, 0);
+    playSound('click');
+}
+function toggleMirror() {
+    mirrorMode = !mirrorMode;
+    const btn = document.getElementById('mirror-btn');
+    if (btn) btn.style.background = mirrorMode ? 'var(--accent)' : '';
+    notify(mirrorMode ? '🪞 Mirror ON' : '🪞 Mirror OFF', '#00c6ff');
+}
+
+function clearDraw() {
+    if (!confirm('Clear canvas?')) return;
+    saveHist(); dc.clearRect(0, 0, drawC.width, drawC.height);
+}
+
+function cropCanvas(src) {
+    const SW = src.width, SH = src.height;
+    const tmp = document.createElement('canvas');
+    tmp.width = SW; tmp.height = SH;
+    const ctx = tmp.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const id = ctx.getImageData(0, 0, SW, SH);
+    const data = id.data;
+    let minX = SW, minY = SH, maxX = 0, maxY = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] > 10) {
+            const idx = i / 4, x = idx % SW, y = Math.floor(idx / SW);
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+    }
+    if (maxX < minX) { const blank = document.createElement('canvas'); blank.width = blank.height = 8; return blank; }
+    const pad = 8, w = maxX - minX + 1 + pad*2, h = maxY - minY + 1 + pad*2;
+    const crop = document.createElement('canvas');
+    crop.width = w; crop.height = h;
+    crop.getContext('2d').drawImage(tmp, -(minX - pad), -(minY - pad));
+    return crop;
+}
+
+function release() {
+    const canvas = cropCanvas(drawC);
+    const scale = parseFloat(document.getElementById('fish-scale').value) || 1;
+    const name = document.getElementById('fish-name').value || 'Fish';
+    const kind = document.getElementById('fish-type').value;
+    const img = canvas.toDataURL();
+    drawHist = []; dc.clearRect(0, 0, drawC.width, drawC.height);
+
+    if (editingId) {
+        const existing = [...fishes, ...plants].find(f => f.id === editingId);
+        if (existing) {
+            existing.img = img; existing.name = name; existing.kind = kind; existing.speed = document.getElementById('fish-speed').value; existing.scale = scale;
+            fishes = fishes.filter(f => f.id !== editingId); plants = plants.filter(p => p.id !== editingId);
+            if (kind === 'Fish') fishes.push(existing); else plants.push(existing);
+            delete imgCache[existing.img]; existing.img = img;
+            rebuildGal(); sendMsg({ type: 'FISH_EDIT', id: editingId, fish: existing }); saveStorage();
+        }
+        editingId = null; document.getElementById('edit-banner').style.display = 'none'; return;
+    }
+
+    if (!name.trim()) { notify('⚠️ Please enter a name', '#ff4444'); return; }
+    const personality = PERSONALITIES[Math.floor(Math.random()*PERSONALITIES.length)];
+    const fx = Math.random() * (aqC.width - 100) + 50, fy = Math.random() * (aqC.height - 100) + 50;
+    const fish = {
+        id: rnd6(), img, name, kind, personality,
+        speed: document.getElementById('fish-speed').value, scale,
+        x: fx, y: fy,
+        vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 2, angle: 0, wobble: 0, ownerId: myId,
+        bornAt: Date.now()
+    };
+
+    if (kind === 'Fish') fishes.push(fish); else plants.push(fish);
+    // Birth animation particles
+    for (let i = 0; i < 20; i++) {
+        particles.push({ x: fx, y: fy, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:40, color:'#00c6ff', r:2 });
+    }
+    releaseHist.push({ kind, fish });
+    sendMsg({ type: 'FISH_ADD', kind, fish });
+    saveStorage(); addFCard(fish, kind);
+    playSound('release');
+    coins += 10; updateCoins(); localStorage.setItem('aqCoins', coins);
+    const fishCount = fishes.length;
+    if (kind === 'Fish') {
+        if (fishCount === 1) unlockAch('first_fish');
+        if (fishCount >= 10) unlockAch('ten_fish');
+    } else {
+        unlockAch('first_plant');
+    }
+    if (Object.keys(conns).length > 0) unlockAch('multi_artist');
+}
+
+function undoRelease() {
+    if (releaseHist.length === 0) return;
+    const { kind, fish } = releaseHist.pop();
+    fishes = fishes.filter(f => f.id !== fish.id);
+    plants = plants.filter(f => f.id !== fish.id);
+    sendMsg({ type: 'FISH_DEL', id: fish.id });
+    rebuildGal(); saveStorage();
+}
+
+function addFCard(obj, kind) {
+    const gal = document.getElementById('gal');
+    const card = document.createElement('div');
+    card.className = 'f-card'; card.id = 'f-' + obj.id;
+    const img = document.createElement('img');
+    img.src = obj.img;
+    const name = document.createElement('div');
+    name.className = 'f-card-name'; name.textContent = obj.name;
+    const btns = document.createElement('div');
+    btns.className = 'f-card-btns';
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✏️'; editBtn.onclick = () => startEdit(obj.id);
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '🗑️'; delBtn.onclick = () => removeFish(obj.id);
+    btns.appendChild(editBtn); btns.appendChild(delBtn);
+    card.appendChild(img); card.appendChild(name); card.appendChild(btns);
+    gal.appendChild(card);
+}
+
+function rebuildGal() {
+    document.getElementById('gal').innerHTML = '';
+    [...fishes, ...plants].forEach(f => addFCard(f, f.kind));
+}
+
+function startEdit(id) {
+    editingId = id;
+    const fish = [...fishes, ...plants].find(f => f.id === id);
+    if (!fish) return;
+    document.getElementById('edit-banner').style.display = 'block';
+    document.getElementById('edit-name').textContent = fish.name;
+    document.getElementById('fish-name').value = fish.name;
+    document.getElementById('fish-type').value = fish.kind;
+    document.getElementById('fish-speed').value = fish.speed;
+    document.getElementById('fish-scale').value = fish.scale;
+    const img = new Image();
+    img.onload = () => { dc.clearRect(0, 0, drawC.width, drawC.height); dc.drawImage(img, 0, 0); drawHist = []; };
+    img.src = fish.img;
+}
+
+function removeFish(id) {
+    if (!confirm('Remove?')) return;
+    fishes = fishes.filter(f => f.id !== id);
+    plants = plants.filter(f => f.id !== id);
+    const card = document.getElementById('f-' + id);
+    if (card) card.remove();
+    sendMsg({ type: 'FISH_DEL', id });
+    saveStorage();
+}
+
+function toggleDecoPanel(btn) {
+    const existing = document.getElementById('deco-panel');
+    if (existing) { existing.remove(); return; }
+    const panel = document.createElement('div');
+    panel.id = 'deco-panel';
+    panel.style.cssText = `position:fixed;top:45px;right:8px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;z-index:1500;box-shadow:0 4px 16px rgba(0,0,0,0.4);max-width:90vw;overflow:auto;max-height:80vh;`;
+    const cats = [
+        { items: ['🪨','🗿','🪵','⛰️','🪸','🐚','🦀','🦞','🌿','🍀','💎','⚓'] }
+    ];
+    let html = '';
+    cats.forEach(c => {
+        html += '<div style="display:flex;gap:3px;flex-wrap:wrap;">';
+        c.items.forEach(emoji => {
+            html += `<button onclick="dropDeco('${emoji}');document.getElementById('deco-panel').remove();" style="background:none;border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:18px;cursor:pointer;">${emoji}</button>`;
+        });
+        html += '</div>';
+    });
+    panel.innerHTML = html;
+    document.body.appendChild(panel);
+    setTimeout(() => {
+        function close(e) {
+            const p = document.getElementById('deco-panel');
+            if (p && !p.contains(e.target) && !btn.contains(e.target)) { p.remove(); document.removeEventListener('mousedown', close); }
+        }
+        document.addEventListener('mousedown', close);
+    }, 50);
+}
+
+function dropDeco(emoji) {
+    if (!aqC) return;
+    const d = { emoji, x: Math.random() * (aqC.width - 80) + 40, y: aqC.height * 0.6 + Math.random() * aqC.height * 0.3, id: rnd6() };
+    decos.push(d);
+    sendMsg({ type: 'DECO', deco: d });
+    saveStorage();
+    if (decos.length >= 5) unlockAch('coral');
+}
+
+function notify(html, col) {
+    const div = document.getElementById('notify');
+    div.innerHTML = html;
+    div.style.borderColor = col;
+    div.style.display = 'block';
+    setTimeout(() => div.style.display = 'none', 2500);
+}
+
+function appendChat(name, color, text) {
+    const msgs = document.getElementById('chat-msgs');
+    const msg = document.createElement('div');
+    msg.className = 'chat-msg';
+    msg.innerHTML = `<strong style="color:${color}">${name}:</strong> ${text.substring(0, 100)}`;
+    msgs.appendChild(msg);
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendChat() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendMsg({ type: 'CHAT', name: myName, color: myColor, text });
+    appendChat(myName, myColor, text);
+}
+
+function quickChat(text) {
+    document.getElementById('msg-input').value = text;
+    sendChat();
+}
+function showAchievements() {
+    const existing = document.getElementById('ach-panel');
+    if (existing) { existing.remove(); return; }
+    const panel = document.createElement('div');
+    panel.id = 'ach-panel';
+    panel.style.cssText = 'position:fixed;top:45px;right:8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:1500;max-width:260px;max-height:70vh;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,0.5);';
+    let html = '<div style="font-weight:bold;margin-bottom:8px;color:#FFD700;">🏆 Achievements</div>';
+    Object.entries(ACHIEVEMENTS).forEach(([k,a]) => {
+        const unlocked = achievements[k];
+        html += `<div style="padding:6px;margin:3px 0;background:var(--panel2);border-radius:4px;opacity:${unlocked?1:0.4};font-size:11px;"><b>${a.emoji} ${a.name}</b><br><span style="color:#aaa;font-size:10px;">${a.desc}</span></div>`;
+    });
+    panel.innerHTML = html;
+    panel.onclick = e => { if (e.target === panel) panel.remove(); };
+    document.body.appendChild(panel);
+    setTimeout(() => {
+        function close(e) { if (!panel.contains(e.target)) { panel.remove(); document.removeEventListener('mousedown', close); } }
+        document.addEventListener('mousedown', close);
+    }, 50);
+}
+function copyLink() {
+    const link = location.href.split('?')[0] + '?room=' + roomCode;
+    navigator.clipboard.writeText(link).then(() => notify('📋 Copied!', '#0072ff')).catch(() => { prompt('Copy:', link); });
+}
+
+function emptyTank() {
+    if (!confirm('Clear all?')) return;
+    fishes = []; plants = [];
+    document.getElementById('gal').innerHTML = '';
+    broadcast({ type: 'INIT', fishes: [], plants: [], decos });
+    saveStorage();
+}
+
+function loadStorage() {
+    const data = localStorage.getItem('aq_' + roomCode);
+    if (!data) return;
+    try {
+        const obj = JSON.parse(data);
+        fishes = obj.fishes || []; plants = obj.plants || []; decos = obj.decos || [];
+        currentTheme = obj.theme || 'Ocean'; nightMode = obj.night || false;
+        rebuildGal(); setTheme(currentTheme);
+        if (nightMode) updateNightMode();
+    } catch (e) {}
+}
+
+function saveStorage() {
+    localStorage.setItem('aq_' + roomCode, JSON.stringify({
+        fishes: fishes.map(f => ({ ...f })),
+        plants: plants.map(f => ({ ...f })),
+        decos, theme: currentTheme, night: nightMode
+    }));
+}
+
+function randName() {
+    return FISH_NAMES[Math.floor(Math.random() * FISH_NAMES.length)];
+}
+
+function setTheme(t) {
+    currentTheme = t;
+    const theme = THEMES[t] || THEMES.Ocean;
+    aqC.style.background = `linear-gradient(180deg, ${theme.sky} 0%, ${theme.bottom} 100%)`;
+    saveStorage();
+}
+
+function updateNightMode() {
+    aqC.style.filter = `brightness(${nightMode ? 0.5 : 1})`;
+}
+
+function toggleNight() {
+    nightMode = !nightMode;
+    updateNightMode();
+    document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
+    saveStorage();
+    if (nightMode) unlockAch('night_diver');
+}
+
+function addBubble() {
+    bubbles.push({ x: Math.random() * aqC.width, y: aqC.height, r: Math.random() * 3 + 2, vy: -(Math.random() * 1 + 0.5), vx: (Math.random() - 0.5) * 0.5 });
+}
+
+const imgCache = {};
+function getCachedImg(src) {
+    if (!imgCache[src]) { const img = new Image(); img.src = src; imgCache[src] = img; }
+    return imgCache[src];
+}
+
+function loop() {
+    const W = aqC.width, H = aqC.height;
+    ac.clearRect(0, 0, W, H); tick++;
+
+    const sweedColors = ['#1a6b3f', '#2d8a50', '#3aa860', '#1d7048', '#4db870'];
+    for (let i = 0; i < 7; i++) {
+        const baseX = 20 + (i * (W - 40)) / 6;
+        const stalks = (i % 2) + 1;
+        for (let s = 0; s < stalks; s++) {
+            const sx = baseX + s * 8 - (stalks - 1) * 4;
+            const sh = H * 0.15 + (i % 3) * (H * 0.05) + s * (H * 0.02);
+            const bend1 = Math.sin(tick * 0.022 + i * 1.3) * 12;
+            ac.strokeStyle = sweedColors[(i + s) % sweedColors.length];
+            ac.lineWidth = 2; ac.lineCap = 'round';
+            ac.beginPath(); ac.moveTo(sx, H);
+            ac.quadraticCurveTo(sx + bend1, H - sh * 0.4, sx + bend1 * 0.5, H - sh);
+            ac.stroke();
+        }
+    }
+
+    if (tick % 35 === 0) addBubble();
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+        const b = bubbles[i];
+        b.x += Math.sin(tick * 0.05 + i) * 0.3; b.y += b.vy;
+        const alpha = Math.min(1, (H - b.y) / 80) * 0.3;
+        ac.strokeStyle = `rgba(190,225,255,${alpha})`; ac.lineWidth = 1;
+        ac.beginPath(); ac.arc(b.x, b.y, b.r, 0, Math.PI * 2); ac.stroke();
+        if (b.y < -b.r) bubbles.splice(i, 1);
+    }
+
+    plants.forEach(p => {
+        const img = getCachedImg(p.img);
+        if (!img.complete) return;
+        const sway = Math.sin(tick * 0.022 + (p.x / W) * 2) * 0.1;
+        const iw = img.naturalWidth * p.scale * 0.5, ih = img.naturalHeight * p.scale * 0.5;
+        ac.save(); ac.translate(p.x, H - 6); ac.rotate(sway); ac.drawImage(img, -iw / 2, -ih, iw, ih); ac.restore();
+    });
+
+    fishes.forEach(f => {
+        const spd = { Lazy: 0.4, Calm: 1.1, Fast: 2.2, Turbo: 4.0 }[f.speed] || 1.1;
+        f.x += f.vx * spd; f.y += f.vy * spd;
+        const wobble = Math.sin(tick * spd * 0.12) * 0.15;
+        const angle = Math.atan2(f.vy, f.vx) + wobble;
+        const pad = 30;
+        if (f.x < pad) f.vx = Math.abs(f.vx); if (f.x > W - pad) f.vx = -Math.abs(f.vx);
+        if (f.y < pad) f.vy = Math.abs(f.vy); if (f.y > H - pad) f.vy = -Math.abs(f.vy);
+        const img = getCachedImg(f.img);
+        if (!img.complete) return;
+        const iw = img.naturalWidth * f.scale * 0.5, ih = img.naturalHeight * f.scale * 0.5;
+        ac.save(); ac.translate(f.x, f.y); ac.rotate(angle);
+        if (f.vx < 0) ac.scale(-1, 1);
+        ac.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+        if (f.vx < 0) ac.scale(-1, 1); // flip text back
+        ac.textAlign = 'center';
+        // Name bubble
+        ac.font = 'bold 11px sans-serif';
+        const nameW = ac.measureText(f.name).width + 10;
+        ac.fillStyle = 'rgba(0,0,0,0.55)';
+        ac.beginPath(); ac.roundRect ? ac.roundRect(-nameW/2, -ih/2 - 20, nameW, 14, 7) : ac.rect(-nameW/2, -ih/2 - 20, nameW, 14); ac.fill();
+        ac.fillStyle = '#fff'; ac.fillText(f.name, 0, -ih / 2 - 9);
+        // Owner label
+        const owner = users[f.ownerId];
+        if (owner) {
+            ac.font = '9px sans-serif';
+            ac.fillStyle = owner.color || 'rgba(255,255,255,0.8)';
+            ac.fillText('by ' + owner.name, 0, ih/2 + 12);
+        }
+        // Speech bubble
+        if (f.speech && f.speechExpires > Date.now()) {
+            ac.font = '11px sans-serif';
+            const tw = Math.min(160, ac.measureText(f.speech).width + 14);
+            ac.fillStyle = 'rgba(255,255,255,0.95)';
+            ac.beginPath(); ac.roundRect ? ac.roundRect(-tw/2, -ih/2 - 42, tw, 18, 9) : ac.rect(-tw/2, -ih/2 - 42, tw, 18); ac.fill();
+            ac.fillStyle = '#111'; ac.fillText(f.speech, 0, -ih/2 - 29);
+        }
+        ac.restore();
+    });
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        if (p.vx !== undefined) { p.x += p.vx; p.y += p.vy; p.vy += 0.05; }
+        p.life--;
+        const a = Math.max(0, p.life / 40);
+        ac.fillStyle = p.color || '#fff';
+        ac.globalAlpha = a;
+        ac.beginPath(); ac.arc(p.x, p.y, p.r || 2, 0, Math.PI*2); ac.fill();
+        ac.globalAlpha = 1;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    decos.forEach(d => { ac.font = '22px serif'; ac.fillText(d.emoji, d.x, d.y); });
+
+    requestAnimationFrame(loop);
+}
+
+document.addEventListener('DOMContentLoaded', () => { initWelcome(); });
+document.getElementById('color-picker-custom').addEventListener('input', e => { selectColor(e.target.value); });
+
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        const aq = document.getElementById('aqC');
+        if (!aq) return;
+        aq.addEventListener('click', e => {
+            const r = aq.getBoundingClientRect();
+            const cx = e.clientX - r.left, cy = e.clientY - r.top;
+            let nearFish = null, nearDist = 55;
+            [...fishes, ...plants].forEach(f => {
+                const d = Math.hypot(f.x - cx, f.y - cy);
+                if (d < nearDist) { nearDist = d; nearFish = f; }
+            });
+            if (nearFish) {
+                const menu = document.createElement('div');
+                menu.style.cssText = `position:fixed;left:${Math.min(e.clientX, window.innerWidth - 150)}px;top:${Math.min(e.clientY, window.innerHeight - 100)}px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;z-index:2000;font-size:11px;`;
+                menu.innerHTML = `
+                    <div style="font-weight:bold;color:var(--accent);margin-bottom:4px;">${nearFish.name}</div>
+                    <button onclick="startEdit('${nearFish.id}');this.parentElement.remove();" style="display:block;width:100%;background:var(--accent);border:none;color:white;padding:5px;border-radius:3px;cursor:pointer;margin-bottom:3px;font-size:11px;">✏️ Edit</button>
+                    <button onclick="removeFish('${nearFish.id}');this.parentElement.remove();" style="display:block;width:100%;background:#cc3333;border:none;color:white;padding:5px;border-radius:3px;cursor:pointer;font-size:11px;">🗑️ Remove</button>
+                `;
+                document.body.appendChild(menu);
+                setTimeout(() => {
+                    function close(e) {
+                        if (menu && !menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', close); }
+                    }
+                    document.addEventListener('mousedown', close);
+                }, 50);
+                return;
+            }
+            fishes.forEach(f => {
+                const dx = f.x - cx, dy = f.y - cy;
+                if (Math.hypot(dx, dy) < 80) {
+                    f.vx += (dx / 100) * 1.5; f.vy += (dy / 100) * 1.5;
+                }
+            });
+        });
+    }, 600);
+});
+</script>
+</body>
+</html>

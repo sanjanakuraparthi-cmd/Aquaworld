@@ -42,6 +42,16 @@
             z-index: 100;
             flex-wrap: wrap;
         }
+        #welcome-status {
+            display: none;
+            padding: 9px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.35;
+            border: 1px solid var(--border);
+            background: rgba(11, 24, 40, 0.95);
+            color: var(--text);
+        }
         #room-code {
             background: var(--panel2);
             padding: 4px 8px;
@@ -203,6 +213,42 @@
             inset: 0;
             background: rgba(1, 6, 12, 0.5);
             z-index: 140;
+        }
+        #mobile-menu-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(1, 6, 12, 0.56);
+            z-index: 240;
+        }
+        #mobile-menu {
+            display: none;
+            position: fixed;
+            right: 10px;
+            top: 58px;
+            width: min(300px, calc(100vw - 20px));
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px;
+            z-index: 260;
+            box-shadow: 0 18px 38px rgba(0,0,0,0.5);
+        }
+        #mobile-menu.open {
+            display: block;
+        }
+        .mobile-menu-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .mobile-menu-grid button,
+        .mobile-menu-grid select,
+        .mobile-menu-grid input {
+            width: 100%;
+        }
+        .mobile-menu-wide {
+            grid-column: 1 / -1;
         }
         #global-hub-backdrop {
             display: none;
@@ -383,6 +429,13 @@
                 font-size: 11px;
                 gap: 6px;
             }
+            #users {
+                max-width: 96px;
+                overflow: hidden;
+            }
+            .mobile-secondary {
+                display: none !important;
+            }
             #container {
                 grid-template-columns: 1fr;
             }
@@ -424,6 +477,9 @@
             #drawer-backdrop.open {
                 display: block;
             }
+            #mobile-menu-backdrop.open {
+                display: block;
+            }
             #global-hub-backdrop.open {
                 display: block;
             }
@@ -454,6 +510,13 @@
             #RP {
                 width: 100%;
                 max-width: 100vw;
+            }
+            #mobile-menu {
+                left: 10px;
+                right: 10px;
+                width: auto;
+                top: auto;
+                bottom: calc(12px + env(safe-area-inset-bottom));
             }
             #global-hub {
                 left: 0 !important;
@@ -506,16 +569,17 @@
     <button onclick="copyInviteLink()" title="Copy invite link">🔗</button>
     <div id="users"></div>
     <div style="flex:1;"></div>
-    <select id="theme-select" onchange="setTheme(this.value)"><option value="Ocean">🌊</option><option value="Tropical">🌺</option><option value="DeepSea">🌑</option><option value="Sunset">🌅</option></select>
-    <button onclick="emptyTank()">🧹</button>
-    <button id="theme-btn" onclick="toggleNight()">🌙</button>
-    <button id="sound-btn" onclick="toggleSound()">🔊</button>
-    <input type="range" min="0" max="1" step="0.05" value="0.5" oninput="setVolume(this.value)" title="Volume" style="width:55px;">
+    <select id="theme-select" class="mobile-secondary" onchange="setTheme(this.value)"><option value="Ocean">🌊</option><option value="Tropical">🌺</option><option value="DeepSea">🌑</option><option value="Sunset">🌅</option></select>
+    <button class="mobile-secondary" onclick="emptyTank()">🧹</button>
+    <button id="theme-btn" class="mobile-secondary" onclick="toggleNight()">🌙</button>
+    <button id="sound-btn" class="mobile-secondary" onclick="toggleSound()">🔊</button>
+    <input class="mobile-secondary volume-slider" type="range" min="0" max="1" step="0.05" value="0.5" oninput="setVolume(this.value)" title="Volume" style="width:55px;">
     <button onclick="openLeaderboard('contest')" title="Global contest">🏆</button>
-    <button id="feed-btn" onclick="toggleFeedMode()" title="Feed mode">🍤</button>
-    <button onclick="screenshotAquarium()" title="Screenshot">📸</button>
-    <button onclick="showAchievements()" title="Achievements">🏆</button>
-    <span id="coin-display" style="font-size:11px;color:#FFD700;">🪙 0</span>
+    <button id="feed-btn" class="mobile-secondary" onclick="toggleFeedMode()" title="Feed mode">🍤</button>
+    <button class="mobile-secondary" onclick="screenshotAquarium()" title="Screenshot">📸</button>
+    <button class="mobile-secondary" onclick="showAchievements()" title="Achievements">🏅</button>
+    <span id="coin-display" class="coin-display mobile-secondary" style="font-size:11px;color:#FFD700;">🪙 0</span>
+    <button id="more-toggle" class="menu-toggle" onclick="toggleMobileMenu()">⋯</button>
     <button id="draw-toggle" class="menu-toggle" onclick="toggleDrawPanel()">✏️</button>
 </div>
 
@@ -535,18 +599,20 @@
             <div id="color-picker" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <button class="btn-primary" onclick="createRoom()">🌊 New</button>
-            <button class="btn-secondary" onclick="showJoin()">🔗 Focus Code</button>
+            <button id="create-room-btn" data-welcome-action="1" class="btn-primary" onclick="createRoom()">🌊 New</button>
+            <button id="focus-code-btn" data-welcome-action="1" class="btn-secondary" onclick="showJoin()">🔗 Focus Code</button>
         </div>
-        <button id="join-linked-btn" class="btn-secondary" onclick="joinLinkedRoom()" style="display:none;max-width:none;">🔗 Join Shared Room</button>
+        <button id="join-linked-btn" data-welcome-action="1" class="btn-secondary" onclick="joinLinkedRoom()" style="display:none;max-width:none;">🔗 Join Shared Room</button>
+        <button id="rejoin-btn" data-welcome-action="1" class="btn-secondary" onclick="rejoinLastRoom()" style="display:none;max-width:none;">↩️ Rejoin Room</button>
         <div id="join-prompt" style="display:block;">
             <label style="display:block;font-size:10px;color:#aaa;margin-bottom:4px;">Code or invite link</label>
             <div style="display:flex;gap:4px;">
                 <input id="room-input" type="text" placeholder="abc123 or pasted link" spellcheck="false" autocapitalize="none" autocorrect="off" style="flex:1;background:var(--bg);border:1px solid var(--accent);color:var(--text);padding:8px;border-radius:4px;font-size:13px;-webkit-user-select:text;user-select:text;pointer-events:auto;" onclick="this.focus();this.select();" onfocus="this.select();" onkeydown="if(event.key==='Enter')joinRoom()">
-                <button class="btn-secondary" onclick="pasteRoomCode()" style="padding:8px 10px;">Paste</button>
-                <button class="btn-secondary" onclick="joinRoom()" style="padding:8px 12px;">Go</button>
+                <button id="paste-room-btn" data-welcome-action="1" class="btn-secondary" onclick="pasteRoomCode()" style="padding:8px 10px;">Paste</button>
+                <button id="join-room-btn" data-welcome-action="1" class="btn-secondary" onclick="joinRoom()" style="padding:8px 12px;">Go</button>
             </div>
         </div>
+        <div id="welcome-status" aria-live="polite"></div>
     </div>
     <p style="color:#334;font-size:9px;max-width:300px;">Share code with friends - see fish instantly!</p>
 </div>
@@ -615,8 +681,34 @@
 </div>
 
 <div id="drawer-backdrop" onclick="closeDrawPanel()"></div>
+<div id="mobile-menu-backdrop" onclick="closeMobileMenu()"></div>
 <div id="global-hub-backdrop" onclick="closeGlobalHub()"></div>
 <div id="notify" hidden style="display:none;"></div>
+<div id="mobile-menu">
+    <div class="rp-head">
+        <h3>⚙️ More</h3>
+        <button class="rp-close" style="display:inline-flex;" onclick="closeMobileMenu()" aria-label="Close more menu">✕</button>
+    </div>
+    <div class="mobile-menu-grid">
+        <select id="mobile-theme-select" class="mobile-menu-wide" onchange="setTheme(this.value)">
+            <option value="Ocean">🌊 Ocean</option>
+            <option value="Tropical">🌺 Tropical</option>
+            <option value="DeepSea">🌑 Deep Sea</option>
+            <option value="Sunset">🌅 Sunset</option>
+        </select>
+        <button id="mobile-night-btn" onclick="toggleNight()">🌙 Night Mode</button>
+        <button id="mobile-sound-btn" onclick="toggleSound()">🔊 Sound</button>
+        <button id="mobile-feed-btn" onclick="toggleFeedMode()">🍤 Feed Mode</button>
+        <button onclick="screenshotAquarium()">📸 Screenshot</button>
+        <button onclick="showAchievements()">🏅 Achievements</button>
+        <button onclick="emptyTank()" class="mobile-menu-wide">🧹 Clear Tank</button>
+        <label class="mobile-menu-wide" style="font-size:11px;color:#9fb4d1;display:flex;flex-direction:column;gap:6px;">
+            Volume
+            <input id="mobile-volume-slider" class="volume-slider" type="range" min="0" max="1" step="0.05" value="0.5" oninput="setVolume(this.value)">
+        </label>
+        <div id="mobile-coin-display" class="coin-display mobile-menu-wide" style="font-size:13px;color:#FFD700;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">🪙 0</div>
+    </div>
+</div>
 
 <script>
 'use strict';
@@ -712,6 +804,7 @@ function setVolume(v) {
     volume = parseFloat(v);
     localStorage.setItem('aqVolume', v);
     updateAmbientSound();
+    syncControlStates();
 }
 function unlockAch(key) {
     if (achievements[key]) return;
@@ -724,8 +817,9 @@ function unlockAch(key) {
     localStorage.setItem('aqCoins', coins);
 }
 function updateCoins() {
-    const el = document.getElementById('coin-display');
-    if (el) el.textContent = `🪙 ${coins}`;
+    document.querySelectorAll('.coin-display').forEach(el => {
+        el.textContent = `🪙 ${coins}`;
+    });
 }
 function screenshotAquarium() {
     const c = document.createElement('canvas');
@@ -743,12 +837,12 @@ function screenshotAquarium() {
 }
 function toggleSound() {
     audioEnabled = !audioEnabled;
-    document.getElementById('sound-btn').textContent = audioEnabled ? '🔊' : '🔇';
     if (audioEnabled) resumeAudio(); else stopAmbientSound();
+    syncControlStates();
 }
 function toggleFeedMode() {
     feedMode = !feedMode;
-    document.getElementById('feed-btn').style.background = feedMode ? 'var(--accent)' : 'var(--panel2)';
+    syncControlStates();
     notify(feedMode ? '🍤 Feed mode on: tap the aquarium.' : '🍤 Feed mode off.', '#00c6ff');
 }
 function dropFood(x, y, pelletId = null) {
@@ -893,6 +987,8 @@ function renderGlobalHub() {
 }
 async function openGlobalHub() {
     closeDrawPanel();
+    closeMobileMenu();
+    closeFishStats();
     await loadGlobalContestState(false);
     renderGlobalHub();
 }
@@ -904,6 +1000,7 @@ const PALETTE_DATA = [
     { colors: ['#FF6B35','#FF8C42','#FFD700','#FF1493','#0072FF','#00BCD4','#00AA55','#8B4513'] }
 ];
 const PLAYER_PROFILE_KEY = 'aqPlayerProfileV1';
+const LAST_ROOM_KEY = 'aqLastRoomCodeV1';
 
 let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
 let users = {}, fishes = [], plants = [], bubbles = [], particles = [];
@@ -919,6 +1016,7 @@ let linkedRoomCode = '';
 let globalContestState = { contest: null, leaderboard: [], gallery: [], hall_of_fame: [] };
 let contestRefreshTimer = 0, notifyTimer = 0, contestServerOnline = false;
 let roomMeta = null, roomBootstrap = null, roomLastEventId = 0, roomSyncTimer = 0, roomSyncBusy = false, roomLeaving = false;
+let welcomeBusy = false;
 const API_BASE = location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
 const PERSONALITIES = ['Speedy','Sleepy','Chaotic','Friendly','Shy','Curious','Brave','Dreamy'];
 const ACHIEVEMENTS = {
@@ -1004,6 +1102,136 @@ function rememberPlayerNameDraft() {
     if (!typed) return;
     myName = typed.slice(0, 40);
     savePlayerProfile();
+}
+function getLastRoomCode() {
+    return normalizeRoomCode(localStorage.getItem(LAST_ROOM_KEY) || '').toUpperCase();
+}
+function saveLastRoomCode(code) {
+    const clean = normalizeRoomCode(code).toUpperCase();
+    if (!clean) return;
+    localStorage.setItem(LAST_ROOM_KEY, clean);
+    updateRejoinButton();
+}
+function updateRejoinButton() {
+    const btn = document.getElementById('rejoin-btn');
+    if (!btn) return;
+    const code = getLastRoomCode();
+    btn.style.display = code ? 'block' : 'none';
+    btn.textContent = code ? `↩️ Rejoin ${code}` : '↩️ Rejoin Room';
+}
+function updateLinkedRoomButton(code = linkedRoomCode) {
+    const btn = document.getElementById('join-linked-btn');
+    const clean = normalizeRoomCode(code).toUpperCase();
+    linkedRoomCode = clean;
+    if (!btn) return;
+    if (!clean) {
+        btn.style.display = 'none';
+        btn.textContent = '🔗 Join Shared Room';
+        return;
+    }
+    btn.style.display = 'block';
+    btn.textContent = `🔗 Join ${clean}`;
+}
+function explainJoinError(err) {
+    const text = String(err?.message || '').trim();
+    if (/room not found/i.test(text)) return 'Room not found. Check the room code or invite link.';
+    if (/join the room first/i.test(text)) return 'Please rejoin the room and try again.';
+    return text || 'Something went wrong. Please try again.';
+}
+function setWelcomeStatus(message = '', tone = 'info') {
+    const box = document.getElementById('welcome-status');
+    if (!box) return;
+    const text = String(message || '').trim();
+    if (!text) {
+        box.style.display = 'none';
+        box.textContent = '';
+        return;
+    }
+    const colors = {
+        info: ['rgba(11,24,40,0.95)', '#9fb4d1'],
+        success: ['rgba(8,44,34,0.95)', '#82f5c5'],
+        error: ['rgba(61,20,29,0.95)', '#ff9aa7'],
+        warning: ['rgba(54,38,12,0.95)', '#ffd166']
+    };
+    const [bg, border] = colors[tone] || colors.info;
+    box.textContent = text;
+    box.style.display = 'block';
+    box.style.background = bg;
+    box.style.borderColor = border;
+    box.style.color = tone === 'error' ? '#ffe1e6' : 'var(--text)';
+}
+function setWelcomeBusy(busy, mode = '') {
+    welcomeBusy = !!busy;
+    document.querySelectorAll('[data-welcome-action]').forEach(btn => {
+        btn.disabled = welcomeBusy;
+        btn.style.opacity = welcomeBusy ? '0.7' : '1';
+        btn.style.cursor = welcomeBusy ? 'wait' : 'pointer';
+    });
+    document.querySelectorAll('#welcome input').forEach(input => {
+        input.disabled = welcomeBusy;
+    });
+    const createBtn = document.getElementById('create-room-btn');
+    const joinBtn = document.getElementById('join-room-btn');
+    const joinLinkedBtn = document.getElementById('join-linked-btn');
+    const rejoinBtn = document.getElementById('rejoin-btn');
+    if (createBtn) createBtn.textContent = welcomeBusy && mode === 'create' ? '⏳ Creating...' : '🌊 New';
+    if (joinBtn) joinBtn.textContent = welcomeBusy && mode === 'join' ? '⏳' : 'Go';
+    if (joinLinkedBtn && joinLinkedBtn.style.display !== 'none') joinLinkedBtn.textContent = welcomeBusy && mode === 'join' ? '⏳ Joining...' : `🔗 Join ${linkedRoomCode || ''}`.trim();
+    if (rejoinBtn && rejoinBtn.style.display !== 'none') rejoinBtn.textContent = welcomeBusy && mode === 'join' ? '⏳ Rejoining...' : `↩️ Rejoin ${getLastRoomCode() || 'Room'}`;
+}
+function closeMobileMenu() {
+    const panel = document.getElementById('mobile-menu');
+    const backdrop = document.getElementById('mobile-menu-backdrop');
+    if (panel) panel.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+}
+function openMobileMenu() {
+    const panel = document.getElementById('mobile-menu');
+    const backdrop = document.getElementById('mobile-menu-backdrop');
+    if (panel) panel.classList.add('open');
+    if (backdrop && window.innerWidth <= 768) backdrop.classList.add('open');
+}
+function toggleMobileMenu() {
+    const panel = document.getElementById('mobile-menu');
+    if (!panel) return;
+    if (panel.classList.contains('open')) closeMobileMenu();
+    else {
+        closeDrawPanel();
+        closeGlobalHub();
+        closeFishStats();
+        openMobileMenu();
+    }
+}
+function syncControlStates() {
+    const soundIcon = audioEnabled ? '🔊' : '🔇';
+    const desktopSound = document.getElementById('sound-btn');
+    const mobileSound = document.getElementById('mobile-sound-btn');
+    if (desktopSound) desktopSound.textContent = soundIcon;
+    if (mobileSound) mobileSound.textContent = `${soundIcon} ${audioEnabled ? 'Sound On' : 'Sound Off'}`;
+
+    const desktopFeed = document.getElementById('feed-btn');
+    const mobileFeed = document.getElementById('mobile-feed-btn');
+    if (desktopFeed) desktopFeed.style.background = feedMode ? 'var(--accent)' : 'var(--panel2)';
+    if (mobileFeed) {
+        mobileFeed.textContent = feedMode ? '🍤 Feed On' : '🍤 Feed Mode';
+        mobileFeed.style.background = feedMode ? 'var(--accent)' : 'var(--panel2)';
+        mobileFeed.style.color = '#fff';
+        mobileFeed.style.border = '1px solid var(--border)';
+    }
+
+    const desktopNight = document.getElementById('theme-btn');
+    const mobileNight = document.getElementById('mobile-night-btn');
+    if (desktopNight) desktopNight.textContent = nightMode ? '☀️' : '🌙';
+    if (mobileNight) mobileNight.textContent = nightMode ? '☀️ Day Mode' : '🌙 Night Mode';
+
+    const desktopTheme = document.getElementById('theme-select');
+    const mobileTheme = document.getElementById('mobile-theme-select');
+    if (desktopTheme) desktopTheme.value = currentTheme;
+    if (mobileTheme) mobileTheme.value = currentTheme;
+
+    document.querySelectorAll('.volume-slider').forEach(slider => {
+        if (slider && slider.value !== String(volume)) slider.value = String(volume);
+    });
 }
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -1146,6 +1374,69 @@ function bindOutsideClose(panel, onClose) {
         document.addEventListener('keydown', onKeyDown, true);
     }, 0);
 }
+function closeFishStats() {
+    removePanel(document.getElementById('fish-stats-panel'));
+}
+function showFishStats(id) {
+    const fish = findFishById(id);
+    if (!fish) return notify('That fish is no longer here.', '#ff6666');
+    closeGlobalHub();
+    closeMobileMenu();
+    closeFishStats();
+    const panel = document.createElement('div');
+    panel.id = 'fish-stats-panel';
+    panel.style.cssText = window.innerWidth <= 768
+        ? 'position:fixed;left:10px;right:10px;bottom:12px;max-height:min(76vh,560px);overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:14px;z-index:2700;box-shadow:0 -16px 34px rgba(0,0,0,0.55);'
+        : 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(430px,calc(100vw - 32px));max-height:min(78vh,620px);overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;z-index:2700;box-shadow:0 22px 48px rgba(0,0,0,0.55);';
+    const ownerName = escapeHtml(getFishOwnerName(fish));
+    const fishName = escapeHtml(fish.name || 'Fish');
+    const rarity = escapeHtml(fish.rarity || 'Common');
+    const personality = escapeHtml(fish.personality || 'Friendly');
+    const bornLabel = escapeHtml(formatBornAt(fish.bornAt));
+    const ageLabel = escapeHtml(formatFishAge(fish.bornAt));
+    const contestLabel = fish.inContest ? `🏆 In global contest · ❤️ ${fish.globalLikes || 0}` : 'Not in contest yet';
+    const ownFish = fish.ownerId === myId;
+    const canCompete = ownFish && fish.kind === 'Fish';
+    const ownActions = ownFish ? `
+        <button onclick="closeFishStats();startEdit('${fish.id}');openDrawPanel();" style="background:var(--accent);border:none;color:#fff;padding:9px 10px;border-radius:8px;cursor:pointer;">✏️ Edit</button>
+        <button onclick="closeFishStats();removeFish('${fish.id}');" style="background:#cc3333;border:none;color:#fff;padding:9px 10px;border-radius:8px;cursor:pointer;">🗑️ Remove</button>
+    ` : '';
+    const contestAction = canCompete ? `
+        <button onclick="submitFishGlobal('${fish.id}');closeFishStats();" style="background:#2d8cff;border:none;color:#fff;padding:9px 10px;border-radius:8px;cursor:pointer;">${fish.inContest ? '🏆 Refresh Contest' : '🏆 Join Contest'}</button>
+    ` : '';
+    const actionCount = (contestAction ? 1 : 0) + (ownFish ? 2 : 0);
+    const actionColumns = Math.min(2, Math.max(1, actionCount));
+    panel.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;">
+            <img src="${fish.img}" alt="${fishName}" style="width:92px;height:72px;object-fit:contain;background:rgba(0,0,0,0.28);border-radius:10px;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:flex-start;gap:8px;">
+                    <div style="min-width:0;flex:1;">
+                        <div style="font-size:18px;font-weight:800;color:#fff;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fishName}</div>
+                        <div style="font-size:11px;color:#9fb4d1;margin-top:4px;">by ${ownerName}</div>
+                    </div>
+                    <button onclick="closeFishStats()" style="background:var(--panel2);border:1px solid var(--border);color:#fff;padding:6px 8px;border-radius:8px;cursor:pointer;">✕</button>
+                </div>
+                <div style="font-size:12px;color:${fish.rarityColor || '#9fb4d1'};margin-top:8px;">${rarity} · ${personality}</div>
+                <div style="font-size:11px;color:#9fb4d1;margin-top:6px;">${escapeHtml(contestLabel)}</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px;">
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Type</div><div style="font-size:13px;font-weight:700;color:#fff;">${escapeHtml(fish.kind || 'Fish')}</div></div>
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Speed</div><div style="font-size:13px;font-weight:700;color:#fff;">${escapeHtml(fish.speed || 'Calm')}</div></div>
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Size</div><div style="font-size:13px;font-weight:700;color:#fff;">${Math.round((parseFloat(fish.scale) || 1) * 100)}%</div></div>
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Food Score</div><div style="font-size:13px;font-weight:700;color:#fff;">${fish.foodScore || 0}</div></div>
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Born</div><div style="font-size:13px;font-weight:700;color:#fff;">${bornLabel}</div></div>
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="font-size:10px;color:#9fb4d1;">Age</div><div style="font-size:13px;font-weight:700;color:#fff;">${ageLabel}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(${actionColumns},minmax(0,1fr));gap:8px;">
+            ${contestAction}
+            ${ownActions}
+        </div>
+    `;
+    document.body.appendChild(panel);
+    bindOutsideClose(panel, closeFishStats);
+}
 function closeDrawPanel() {
     const panel = document.getElementById('RP');
     const backdrop = document.getElementById('drawer-backdrop');
@@ -1155,6 +1446,9 @@ function closeDrawPanel() {
 function openDrawPanel() {
     const panel = document.getElementById('RP');
     const backdrop = document.getElementById('drawer-backdrop');
+    closeGlobalHub();
+    closeMobileMenu();
+    closeFishStats();
     if (panel) panel.classList.add('open');
     if (backdrop && window.innerWidth <= 768) backdrop.classList.add('open');
 }
@@ -1277,7 +1571,11 @@ function initWelcome() {
     ensurePlayerIdentity();
     const hasCode = new URLSearchParams(location.search).get('room');
     document.getElementById('join-prompt').style.display = 'block';
+    setWelcomeStatus('');
+    setWelcomeBusy(false);
+    updateRejoinButton();
     const nameInput = document.getElementById('name-input');
+    const roomInput = document.getElementById('room-input');
     if (nameInput) {
         nameInput.value = myName || 'Aquarist';
         nameInput.addEventListener('input', rememberPlayerNameDraft);
@@ -1285,13 +1583,14 @@ function initWelcome() {
         nameInput.addEventListener('blur', rememberPlayerNameDraft);
     }
     if (hasCode) {
-        linkedRoomCode = normalizeRoomCode(hasCode);
-        document.getElementById('room-input').value = linkedRoomCode;
-        const joinBtn = document.getElementById('join-linked-btn');
-        if (joinBtn) {
-            joinBtn.style.display = 'block';
-            joinBtn.textContent = `🔗 Join ${linkedRoomCode}`;
-        }
+        updateLinkedRoomButton(hasCode);
+        if (roomInput) roomInput.value = linkedRoomCode;
+        setWelcomeStatus(`Shared room ${linkedRoomCode} is ready. Add your name and join.`, 'info');
+    } else {
+        updateLinkedRoomButton('');
+        const savedCode = getLastRoomCode();
+        if (roomInput && savedCode) roomInput.value = savedCode;
+        if (savedCode) setWelcomeStatus(`Last room ${savedCode} is saved here.`, 'info');
     }
 
     const picker = document.getElementById('color-picker');
@@ -1305,8 +1604,8 @@ function initWelcome() {
     if (AV_COLORS.includes(myColor)) selectPlayerColor(myColor);
     else document.querySelectorAll('#color-picker button')[0].click();
     initAudio();
-    const firstInput = (myName && myName !== 'Aquarist')
-        ? document.getElementById('room-input')
+    const firstInput = (myName && myName !== 'Aquarist' && roomInput)
+        ? roomInput
         : document.getElementById('name-input');
     setTimeout(() => {
         try { firstInput.focus(); } catch (e) {}
@@ -1315,6 +1614,7 @@ function initWelcome() {
 
 function showJoin() {
     const input = document.getElementById('room-input');
+    setWelcomeStatus('Type or paste a room code to join your friends.', 'info');
     setTimeout(() => {
         input.focus();
         input.select();
@@ -1325,13 +1625,21 @@ async function pasteRoomCode() {
     const input = document.getElementById('room-input');
     try {
         const text = await navigator.clipboard.readText();
-        input.value = normalizeRoomCode(text);
-        linkedRoomCode = normalizeRoomCode(text) || linkedRoomCode;
+        const clean = normalizeRoomCode(text).toUpperCase();
+        if (!clean) {
+            input.focus();
+            setWelcomeStatus('Could not find a room code in that paste.', 'warning');
+            return;
+        }
+        const pastedInvite = /https?:|[?&]room=/i.test(text);
+        input.value = clean;
+        updateLinkedRoomButton(pastedInvite ? clean : '');
+        setWelcomeStatus(pastedInvite ? `Invite ready for ${clean}.` : `Room code ${clean} pasted. Tap Go to join.`, 'success');
         input.focus();
         input.select();
     } catch (e) {
         input.focus();
-        notify('Paste your room code or invite link here.', '#9fb4d1');
+        setWelcomeStatus('Paste your room code or invite link here.', 'info');
     }
 }
 
@@ -1340,19 +1648,34 @@ function joinLinkedRoom() {
     const nameInput = document.getElementById('name-input');
     if (!nameInput.value.trim()) {
         nameInput.focus();
-        notify('Enter your name, then tap Join Shared Room.', '#9fb4d1');
+        setWelcomeStatus('Enter your name, then tap Join Shared Room.', 'warning');
         return;
     }
     document.getElementById('room-input').value = linkedRoomCode;
+    setWelcomeStatus(`Joining room ${linkedRoomCode}...`, 'info');
+    joinRoom();
+}
+function rejoinLastRoom() {
+    const code = getLastRoomCode();
+    if (!code) {
+        setWelcomeStatus('There is no saved room yet.', 'warning');
+        return;
+    }
+    document.getElementById('room-input').value = code;
+    updateLinkedRoomButton('');
+    setWelcomeStatus(`Rejoining room ${code}...`, 'info');
     joinRoom();
 }
 
 async function createRoom() {
+    if (welcomeBusy) return;
     syncPlayerProfileFromInputs();
     roomCode = '';
     roomMeta = null;
     roomBootstrap = null;
     updateConnStatus('syncing');
+    setWelcomeBusy(true, 'create');
+    setWelcomeStatus('Creating your room...', 'info');
     try {
         const data = await apiFetch('/api/rooms/create', {
             method: 'POST',
@@ -1361,22 +1684,32 @@ async function createRoom() {
         roomCode = String(data.room?.room_code || '').toUpperCase();
         roomBootstrap = data;
         isHost = data.room?.acting_owner_id === myId;
+        saveLastRoomCode(roomCode);
+        setWelcomeStatus(`Room ${roomCode} is ready.`, 'success');
         start();
         notify(`Created room ${roomCode}`, '#00c6ff');
     } catch (err) {
         updateConnStatus('offline');
+        setWelcomeBusy(false);
+        setWelcomeStatus(err?.message || 'Could not create a room right now.', 'error');
         notify(`Could not create room: ${err.message}`, '#ff6666');
     }
 }
 
 async function joinRoom() {
+    if (welcomeBusy) return;
     syncPlayerProfileFromInputs();
     roomCode = normalizeRoomCode(document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
     document.getElementById('room-input').value = roomCode;
-    if (!roomCode) return alert('Enter a room code or invite link');
+    if (!roomCode) {
+        setWelcomeStatus('Enter a room code or invite link first.', 'warning');
+        return showJoin();
+    }
     roomMeta = null;
     roomBootstrap = null;
     updateConnStatus('syncing');
+    setWelcomeBusy(true, 'join');
+    setWelcomeStatus(`Joining room ${roomCode}...`, 'info');
     try {
         const data = await apiFetch('/api/rooms/join', {
             method: 'POST',
@@ -1385,10 +1718,14 @@ async function joinRoom() {
         roomCode = String(data.room?.room_code || roomCode).toUpperCase();
         roomBootstrap = data;
         isHost = data.room?.acting_owner_id === myId;
+        saveLastRoomCode(roomCode);
+        setWelcomeStatus(`Connected to room ${roomCode}.`, 'success');
         start();
         notify(`Connected to room ${roomCode}`, '#00c6ff');
     } catch (err) {
         updateConnStatus('offline');
+        setWelcomeBusy(false);
+        setWelcomeStatus(explainJoinError(err), 'error');
         notify(`Could not join room: ${err.message}`, '#ff6666');
     }
 }
@@ -1402,8 +1739,38 @@ function applyRoomSnapshot(state = {}) {
     rebuildGal();
     setTheme(currentTheme, false);
     updateNightMode();
-    document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
+    syncControlStates();
     if (drawC && dc) applyCanvasImage(state.draft || null);
+}
+function getFishOwnerName(fish) {
+    if (!fish) return 'Aquarist';
+    if (fish.ownerId && users[fish.ownerId]?.name) return users[fish.ownerId].name;
+    if (fish.ownerId === myId) return myName;
+    return 'Aquarist';
+}
+function formatBornAt(timestamp) {
+    if (!timestamp) return 'Just now';
+    try {
+        return new Date(timestamp).toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    } catch (e) {
+        return 'Just now';
+    }
+}
+function formatFishAge(timestamp) {
+    if (!timestamp) return 'Freshly released';
+    const diff = Math.max(0, Date.now() - timestamp);
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m old`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ${mins % 60}m old`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h old`;
 }
 
 function applyRoomMembers(members = []) {
@@ -1424,6 +1791,7 @@ function updateRoomMeta(nextMeta, silent = false) {
     const previousActingOwner = roomMeta?.acting_owner_id || null;
     roomMeta = nextMeta;
     roomCode = String(roomMeta.room_code || roomCode || '').toUpperCase();
+    saveLastRoomCode(roomCode);
     const wasHost = isHost;
     isHost = roomMeta.acting_owner_id === myId;
     updateHdr();
@@ -1519,6 +1887,12 @@ function leaveRoomBackend() {
 function start() {
     document.getElementById('welcome').style.display = 'none';
     document.getElementById('container').style.display = 'grid';
+    setWelcomeBusy(false);
+    setWelcomeStatus('');
+    saveLastRoomCode(roomCode);
+    updateRejoinButton();
+    closeMobileMenu();
+    closeGlobalHub();
 
     aqC = document.getElementById('aqC');
     ac = aqC.getContext('2d');
@@ -1535,7 +1909,11 @@ function start() {
     resizeAq();
     window.addEventListener('resize', resizeAq);
     window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) closeDrawPanel();
+        if (window.innerWidth > 768) {
+            closeDrawPanel();
+            closeMobileMenu();
+        }
+        updateHdr();
     });
     window.addEventListener('beforeunload', leaveRoomBackend, { once: true });
 
@@ -1555,9 +1933,8 @@ function start() {
     coins = parseInt(localStorage.getItem('aqCoins') || '0');
     achievements = JSON.parse(localStorage.getItem('aqAchievements') || '{}');
     volume = parseFloat(localStorage.getItem('aqVolume') || '0.5');
-    const vol = document.querySelector('input[type="range"][title="Volume"]');
-    if (vol) vol.value = volume;
     updateCoins();
+    syncControlStates();
     resumeAudio();
 
     fishes = [];
@@ -1674,6 +2051,7 @@ function handleMsg(d, from) {
         currentTheme = d.theme || 'Ocean'; nightMode = d.night || false;
         rebuildGal(); updateHdr(); setTheme(currentTheme, false);
         if (nightMode) updateNightMode();
+        syncControlStates();
         if (d.draft !== undefined) applyCanvasImage(d.draft);
         loadGlobalContestState(true);
     } else if (d.type === 'FISH_ADD') {
@@ -1728,7 +2106,7 @@ function handleMsg(d, from) {
     } else if (d.type === 'NIGHT') {
         nightMode = !!d.night;
         updateNightMode();
-        document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
+        syncControlStates();
     }
 }
 
@@ -1755,7 +2133,9 @@ function updateHdr() {
     document.getElementById('room-code').textContent = roomCode || '———';
     const usersDiv = document.getElementById('users');
     usersDiv.innerHTML = '';
-    Object.values(users).forEach(u => {
+    const people = Object.values(users);
+    const visible = window.innerWidth <= 768 ? people.slice(0, 3) : people;
+    visible.forEach(u => {
         const av = document.createElement('div');
         av.className = 'user-avatar';
         av.style.background = u.color;
@@ -1763,6 +2143,15 @@ function updateHdr() {
         av.textContent = u.name[0].toUpperCase();
         usersDiv.appendChild(av);
     });
+    if (window.innerWidth <= 768 && people.length > visible.length) {
+        const extra = document.createElement('div');
+        extra.className = 'user-avatar';
+        extra.style.background = 'var(--panel2)';
+        extra.style.color = '#9fb4d1';
+        extra.title = `${people.length - visible.length} more people`;
+        extra.textContent = `+${people.length - visible.length}`;
+        usersDiv.appendChild(extra);
+    }
 }
 
 let lastX = 0, lastY = 0, startX = 0, startY = 0;
@@ -2040,8 +2429,12 @@ function addFCard(obj, kind) {
     card.className = 'f-card'; card.id = 'f-' + obj.id;
     const img = document.createElement('img');
     img.src = obj.img;
+    img.style.cursor = 'pointer';
+    img.onclick = () => showFishStats(obj.id);
     const name = document.createElement('div');
     name.className = 'f-card-name'; name.textContent = obj.name;
+    name.style.cursor = 'pointer';
+    name.onclick = () => showFishStats(obj.id);
     const meta = document.createElement('div');
     meta.style.cssText = 'font-size:9px;color:#9fb4d1;line-height:1.25;text-align:center;';
     meta.innerHTML = `<span style="color:${obj.rarityColor || '#9fb4d1'};">${obj.rarity || 'Common'}</span><br>${obj.inContest ? `🏆 In global contest · ❤️ ${obj.globalLikes || 0}` : 'Not in contest'}`;
@@ -2049,6 +2442,10 @@ function addFCard(obj, kind) {
     btns.className = 'f-card-btns';
     const ownFish = obj.ownerId === myId;
     const canCompete = ownFish && obj.kind === 'Fish';
+    const infoBtn = document.createElement('button');
+    infoBtn.textContent = 'ℹ️';
+    infoBtn.title = 'View fish stats';
+    infoBtn.onclick = () => showFishStats(obj.id);
     const editBtn = document.createElement('button');
     editBtn.textContent = '✏️';
     editBtn.disabled = !ownFish;
@@ -2065,6 +2462,7 @@ function addFCard(obj, kind) {
     submitBtn.disabled = !canCompete;
     submitBtn.style.opacity = submitBtn.disabled ? '0.45' : '1';
     submitBtn.onclick = () => submitFishGlobal(obj.id);
+    btns.appendChild(infoBtn);
     btns.appendChild(editBtn);
     btns.appendChild(delBtn);
     btns.appendChild(submitBtn);
@@ -2164,6 +2562,9 @@ function quickChat(text) {
 function showAchievements() {
     const existing = document.getElementById('ach-panel');
     if (existing) { removePanel(existing); return; }
+    closeMobileMenu();
+    closeGlobalHub();
+    closeFishStats();
     const panel = document.createElement('div');
     panel.id = 'ach-panel';
     panel.style.cssText = window.innerWidth <= 768
@@ -2231,6 +2632,7 @@ function setTheme(t, sync = true) {
     const theme = THEMES[t] || THEMES.Ocean;
     aqC.style.background = `linear-gradient(180deg, ${theme.sky} 0%, ${theme.bottom} 100%)`;
     saveStorage();
+    syncControlStates();
     if (sync && roomCode) sendMsg({ type: 'THEME', theme: t });
 }
 
@@ -2242,7 +2644,7 @@ function toggleNight() {
     if (roomCode && !isHost) return notify('Only the room creator can switch day and night.', '#ff6666');
     nightMode = !nightMode;
     updateNightMode();
-    document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
+    syncControlStates();
     saveStorage();
     if (roomCode) sendMsg({ type: 'NIGHT', night: nightMode });
     if (nightMode) unlockAch('night_diver');
@@ -2425,7 +2827,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     : `position:fixed;left:${Math.min(e.clientX, window.innerWidth - 150)}px;top:${Math.min(e.clientY, window.innerHeight - 100)}px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;z-index:2000;font-size:11px;`;
                 const ownFish = nearFish.ownerId === myId;
                 const canCompete = ownFish && nearFish.kind === 'Fish';
-                let actions = '';
+                let actions = `<button onclick="showFishStats('${nearFish.id}');removePanel(this.parentElement);" style="display:block;width:100%;background:var(--panel2);border:1px solid var(--border);color:white;padding:6px;border-radius:6px;cursor:pointer;margin-bottom:4px;font-size:11px;">ℹ️ View Stats</button>`;
                 if (ownFish) {
                     actions += `<button onclick="startEdit('${nearFish.id}');this.parentElement.remove();" style="display:block;width:100%;background:var(--accent);border:none;color:white;padding:5px;border-radius:3px;cursor:pointer;margin-bottom:3px;font-size:11px;">✏️ Edit</button>`;
                     actions += `<button onclick="removeFish('${nearFish.id}');this.parentElement.remove();" style="display:block;width:100%;background:#cc3333;border:none;color:white;padding:5px;border-radius:3px;cursor:pointer;font-size:11px;">🗑️ Remove</button>`;

@@ -1190,6 +1190,10 @@ function rememberPlayerNameDraft() {
 function getLastRoomCode() {
     return normalizeRoomCode(localStorage.getItem(LAST_ROOM_KEY) || '').toUpperCase();
 }
+function clearLastRoomCode() {
+    localStorage.removeItem(LAST_ROOM_KEY);
+    updateRejoinButton();
+}
 function saveLastRoomCode(code) {
     const clean = normalizeRoomCode(code).toUpperCase();
     if (!clean) return;
@@ -1221,6 +1225,17 @@ function explainJoinError(err) {
     if (/room not found/i.test(text)) return 'Room not found. Check the room code or invite link.';
     if (/join the room first/i.test(text)) return 'Please rejoin the room and try again.';
     return text || 'Something went wrong. Please try again.';
+}
+async function validateSavedRoomCode(code, { silent = true } = {}) {
+    const clean = normalizeRoomCode(code).toUpperCase();
+    if (!clean) return false;
+    try {
+        const data = await apiFetch(`/api/rooms/status?room_code=${encodeURIComponent(clean)}`);
+        return !!data?.exists;
+    } catch (err) {
+        if (!silent) setWelcomeStatus(explainJoinError(err), 'error');
+        return false;
+    }
 }
 function setWelcomeStatus(message = '', tone = 'info') {
     const box = document.getElementById('welcome-status');
@@ -1690,6 +1705,15 @@ function initWelcome() {
         const savedCode = getLastRoomCode();
         if (roomInput && savedCode) roomInput.value = savedCode;
         if (savedCode) setWelcomeStatus(`Last room ${savedCode} is saved here.`, 'info');
+        if (savedCode) {
+            validateSavedRoomCode(savedCode).then(exists => {
+                if (!exists && getLastRoomCode() === savedCode) {
+                    clearLastRoomCode();
+                    if (roomInput && normalizeRoomCode(roomInput.value).toUpperCase() === savedCode) roomInput.value = '';
+                    setWelcomeStatus('Your last saved room is no longer available, so it was cleared.', 'warning');
+                }
+            });
+        }
     }
 
     const picker = document.getElementById('color-picker');
@@ -1766,10 +1790,18 @@ function rejoinLastRoom() {
         setWelcomeStatus('There is no saved room yet.', 'warning');
         return;
     }
-    document.getElementById('room-input').value = code;
-    updateLinkedRoomButton('');
-    setWelcomeStatus(`Rejoining room ${code}...`, 'info');
-    joinRoom(code);
+    validateSavedRoomCode(code, { silent: false }).then(exists => {
+        if (!exists) {
+            clearLastRoomCode();
+            document.getElementById('room-input').value = '';
+            setWelcomeStatus('That saved room no longer exists, so it was removed from Rejoin.', 'warning');
+            return;
+        }
+        document.getElementById('room-input').value = code;
+        updateLinkedRoomButton('');
+        setWelcomeStatus(`Rejoining room ${code}...`, 'info');
+        joinRoom(code);
+    });
 }
 
 async function createRoom() {
@@ -1829,6 +1861,9 @@ async function joinRoom(prefilledCode = '') {
         notify(`Connected to room ${roomCode}`, '#00c6ff');
     } catch (err) {
         updateConnStatus('offline');
+        if (/room not found/i.test(String(err?.message || '')) && getLastRoomCode() === roomCode) {
+            clearLastRoomCode();
+        }
         setWelcomeBusy(false);
         setWelcomeStatus(explainJoinError(err), 'error');
         notify(`Could not join room: ${err.message}`, '#ff6666');

@@ -816,6 +816,8 @@ class AquaHandler(SimpleHTTPRequestHandler):
             return self.write_json(get_global_state(voter_id))
         if parsed.path == "/api/global/status":
             return self.write_json({"ok": True, "contest": contest_for_today()})
+        if parsed.path == "/api/rooms/status":
+            return self.handle_room_status(parsed)
         if parsed.path == "/api/rooms/sync":
             return self.handle_room_sync(parsed)
         return super().do_GET()
@@ -1064,6 +1066,28 @@ class AquaHandler(SimpleHTTPRequestHandler):
         except ApiError as err:
             return self.write_json({"ok": False, "error": err.error}, err.status)
         self.write_json(response)
+
+    def handle_room_status(self, parsed) -> None:
+        qs = parse_qs(parsed.query)
+        room_code = normalize_room_code(qs.get("room_code", [""])[0])
+        if not room_code:
+            return self.write_json({"ok": False, "error": "Missing room code"}, 400)
+        with db() as conn:
+            room_row = load_room_row(conn, room_code)
+            if not room_row and room_code == PUBLIC_ROOM_CODE:
+                room_row = ensure_room_exists(conn, PUBLIC_ROOM_CODE, PUBLIC_ROOM_OWNER_ID)
+            if not room_row:
+                return self.write_json({"ok": False, "exists": False, "error": "Room not found"}, 404)
+            cleanup_stale_members(conn, room_code)
+            room_row = load_room_row(conn, room_code)
+            self.write_json(
+                {
+                    "ok": True,
+                    "exists": True,
+                    "room": room_descriptor(conn, room_row),
+                    "members": [member_to_dict(row) for row in active_room_member_rows(conn, room_code)],
+                }
+            )
 
     def handle_room_event(self, payload: dict) -> None:
         room_code = normalize_room_code(payload.get("room_code"))

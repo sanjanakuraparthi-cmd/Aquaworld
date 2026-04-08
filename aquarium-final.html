@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>AquaWorld - Draw & Release Fish Together</title>
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
         html, body { width: 100%; height: 100%; }
@@ -830,7 +829,7 @@ const PALETTE_DATA = [
 ];
 
 let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
-let peer = null, conns = {}, users = {}, fishes = [], plants = [], bubbles = [], particles = [];
+let users = {}, fishes = [], plants = [], bubbles = [], particles = [];
 let tool = 'pen', brushColor = '#FF6B35', brushSize = 3, drawOpacity = 1, drawing = false, drawHist = [], redoHist = [], releaseHist = [];
 let editingId = null, nightMode = false, currentTheme = 'Ocean', mirrorMode = false;
 let coins = 0, level = 1, achievements = {}, volume = 0.5;
@@ -842,6 +841,7 @@ let feedSyncTimers = {};
 let linkedRoomCode = '';
 let globalContestState = { contest: null, leaderboard: [], gallery: [], hall_of_fame: [] };
 let contestRefreshTimer = 0, notifyTimer = 0, contestServerOnline = false;
+let roomMeta = null, roomBootstrap = null, roomLastEventId = 0, roomSyncTimer = 0, roomSyncBusy = false, roomLeaving = false;
 const API_BASE = location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '';
 const PERSONALITIES = ['Speedy','Sleepy','Chaotic','Friendly','Shy','Curious','Brave','Dreamy'];
 const ACHIEVEMENTS = {
@@ -901,9 +901,6 @@ async function apiFetch(path, options = {}) {
     }
     return data;
 }
-function isHostId(id) {
-    return !!roomCode && id === roomCode;
-}
 function canMutateFishFromSender(sender, fishId, nextFish = null) {
     const current = fishId ? findFishById(fishId) : null;
     const ownerId = nextFish?.ownerId || current?.ownerId;
@@ -911,34 +908,6 @@ function canMutateFishFromSender(sender, fishId, nextFish = null) {
     if (current && current.ownerId && current.ownerId !== sender) return false;
     if (nextFish && nextFish.ownerId !== ownerId) return false;
     return ownerId === sender;
-}
-function canRelayMessage(msg, sender) {
-    switch (msg.type) {
-        case 'HELLO':
-        case 'CHAT':
-        case 'DRAW_SEG':
-        case 'DRAW_FILL':
-        case 'DRAW_SPRAY':
-        case 'DRAW_SNAPSHOT':
-        case 'DRAW_CLEAR':
-        case 'FOOD_DROP':
-        case 'FOOD_EAT':
-            return true;
-        case 'FISH_ADD':
-            return !!msg.fish && msg.fish.ownerId === sender;
-        case 'FISH_EDIT':
-            return !!msg.fish && canMutateFishFromSender(sender, msg.id, msg.fish);
-        case 'FISH_DEL':
-            return canMutateFishFromSender(sender, msg.id);
-        case 'FISH_FEED_STATE':
-            return !!msg.fish && canMutateFishFromSender(sender, msg.id, msg.fish);
-        case 'THEME':
-        case 'NIGHT':
-        case 'INIT':
-            return isHostId(sender);
-        default:
-            return false;
-    }
 }
 function applyContestStateToRoom(entries = []) {
     const allEntries = Array.isArray(entries) ? entries : [];
@@ -1023,7 +992,8 @@ function getRoomStatePayload() {
         users: Object.values(users),
         theme: currentTheme,
         night: nightMode,
-        draft: drawC ? drawC.toDataURL('image/webp', 0.82) : null
+        draft: drawC ? drawC.toDataURL('image/webp', 0.82) : null,
+        foodPellets: foodPellets.map(pellet => ({ ...pellet }))
     };
 }
 function applyCanvasImage(src) {
@@ -1189,21 +1159,175 @@ function joinLinkedRoom() {
     joinRoom();
 }
 
-function createRoom() {
-    myName = document.getElementById('name-input').value || 'Aquarist';
-    roomCode = rnd6();
-    isHost = true;
-    myId = roomCode;
-    start();
+async function createRoom() {
+    myName = (document.getElementById('name-input').value || 'Aquarist').trim() || 'Aquarist';
+    myId = rnd6();
+    roomCode = '';
+    roomMeta = null;
+    roomBootstrap = null;
+    updateConnStatus('syncing');
+    try {
+        const data = await apiFetch('/api/rooms/create', {
+            method: 'POST',
+            body: JSON.stringify({ client_id: myId, name: myName, color: myColor })
+        });
+        roomCode = String(data.room?.room_code || '').toUpperCase();
+        roomBootstrap = data;
+        isHost = data.room?.acting_owner_id === myId;
+        start();
+        notify(`Created room ${roomCode}`, '#00c6ff');
+    } catch (err) {
+        updateConnStatus('offline');
+        notify(`Could not create room: ${err.message}`, '#ff6666');
+    }
 }
 
-function joinRoom() {
-    myName = document.getElementById('name-input').value || 'Aquarist';
-    roomCode = normalizeRoomCode(document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '');
+async function joinRoom() {
+    myName = (document.getElementById('name-input').value || 'Aquarist').trim() || 'Aquarist';
+    roomCode = normalizeRoomCode(document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
     document.getElementById('room-input').value = roomCode;
     if (!roomCode) return alert('Enter a room code or invite link');
     myId = rnd6();
-    start();
+    roomMeta = null;
+    roomBootstrap = null;
+    updateConnStatus('syncing');
+    try {
+        const data = await apiFetch('/api/rooms/join', {
+            method: 'POST',
+            body: JSON.stringify({ room_code: roomCode, client_id: myId, name: myName, color: myColor })
+        });
+        roomCode = String(data.room?.room_code || roomCode).toUpperCase();
+        roomBootstrap = data;
+        isHost = data.room?.acting_owner_id === myId;
+        start();
+        notify(`Connected to room ${roomCode}`, '#00c6ff');
+    } catch (err) {
+        updateConnStatus('offline');
+        notify(`Could not join room: ${err.message}`, '#ff6666');
+    }
+}
+
+function applyRoomSnapshot(state = {}) {
+    fishes = Array.isArray(state.fishes) ? state.fishes : [];
+    plants = Array.isArray(state.plants) ? state.plants : [];
+    foodPellets = Array.isArray(state.foodPellets) ? state.foodPellets : [];
+    currentTheme = state.theme || 'Ocean';
+    nightMode = !!state.night;
+    rebuildGal();
+    setTheme(currentTheme, false);
+    updateNightMode();
+    document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
+    if (drawC && dc) applyCanvasImage(state.draft || null);
+}
+
+function applyRoomMembers(members = []) {
+    users = {};
+    members.forEach(member => {
+        users[member.client_id] = {
+            id: member.client_id,
+            name: member.name,
+            color: member.color
+        };
+    });
+    if (!users[myId]) users[myId] = { id: myId, name: myName, color: myColor };
+    updateHdr();
+}
+
+function updateRoomMeta(nextMeta, silent = false) {
+    if (!nextMeta) return;
+    const previousActingOwner = roomMeta?.acting_owner_id || null;
+    roomMeta = nextMeta;
+    roomCode = String(roomMeta.room_code || roomCode || '').toUpperCase();
+    const wasHost = isHost;
+    isHost = roomMeta.acting_owner_id === myId;
+    updateHdr();
+    if (!silent && previousActingOwner && previousActingOwner !== roomMeta.acting_owner_id) {
+        if (isHost && !wasHost) notify('👑 You are now leading the room.', '#ffd166');
+        else if (users[roomMeta.acting_owner_id]) notify(`👑 ${users[roomMeta.acting_owner_id].name} is now leading the room.`, '#ffd166');
+    }
+}
+
+function bootstrapRoomSession(data) {
+    roomLastEventId = data.last_event_id || 0;
+    updateRoomMeta(data.room, true);
+    applyRoomSnapshot(data.state || {});
+    applyRoomMembers(data.members || []);
+    updateRoomMeta(data.room, true);
+    updateConnStatus('connected');
+}
+
+async function pollRoomSync(showErrors = false) {
+    if (roomSyncBusy || !roomCode || !myId) return;
+    roomSyncBusy = true;
+    try {
+        const data = await apiFetch(`/api/rooms/sync?room_code=${encodeURIComponent(roomCode)}&client_id=${encodeURIComponent(myId)}&last_event_id=${encodeURIComponent(roomLastEventId)}`);
+        const events = Array.isArray(data.events) ? data.events : [];
+        events.forEach(evt => {
+            roomLastEventId = Math.max(roomLastEventId, evt.event_id || 0);
+            handleMsg(evt.message, evt.sender_id);
+        });
+        roomLastEventId = Math.max(roomLastEventId, data.last_event_id || 0);
+        if (data.state) applyRoomSnapshot(data.state);
+        applyRoomMembers(data.members || []);
+        updateRoomMeta(data.room);
+        updateConnStatus('connected');
+    } catch (err) {
+        updateConnStatus(showErrors ? 'offline' : 'reconnecting');
+        if (showErrors) notify(`Could not sync room: ${err.message}`, '#ff6666');
+    } finally {
+        roomSyncBusy = false;
+    }
+}
+
+function startRoomPolling() {
+    clearInterval(roomSyncTimer);
+    pollRoomSync(false);
+    roomSyncTimer = setInterval(() => { pollRoomSync(false); }, 900);
+}
+
+async function postRoomEvent(msg, quiet = true) {
+    if (!roomCode || !myId) return;
+    try {
+        const data = await apiFetch('/api/rooms/event', {
+            method: 'POST',
+            body: JSON.stringify({
+                room_code: roomCode,
+                client_id: myId,
+                name: myName,
+                color: myColor,
+                message: msg
+            })
+        });
+        roomLastEventId = Math.max(roomLastEventId, data.event_id || 0);
+        if (data.room) updateRoomMeta(data.room, true);
+        updateConnStatus('connected');
+    } catch (err) {
+        updateConnStatus('reconnecting');
+        if (!quiet) notify(`Could not update room: ${err.message}`, '#ff6666');
+    }
+}
+
+function sendMsg(msg) {
+    postRoomEvent(msg, true);
+}
+
+function leaveRoomBackend() {
+    if (!roomCode || !myId || roomLeaving) return;
+    roomLeaving = true;
+    clearInterval(roomSyncTimer);
+    const body = JSON.stringify({ room_code: roomCode, client_id: myId });
+    try {
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(apiUrl('/api/rooms/leave'), new Blob([body], { type: 'application/json' }));
+        } else {
+            fetch(apiUrl('/api/rooms/leave'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                keepalive: true
+            }).catch(() => {});
+        }
+    } catch (e) {}
 }
 
 function start() {
@@ -1224,6 +1348,7 @@ function start() {
 
     resizeAq();
     window.addEventListener('resize', resizeAq);
+    window.addEventListener('beforeunload', leaveRoomBackend, { once: true });
 
     drawC.addEventListener('mousedown', onDown, { passive: false });
     drawC.addEventListener('mousemove', onMove, { passive: false });
@@ -1237,7 +1362,6 @@ function start() {
         if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redoStroke(); }
     });
 
-    // Load progression
     coins = parseInt(localStorage.getItem('aqCoins') || '0');
     achievements = JSON.parse(localStorage.getItem('aqAchievements') || '{}');
     volume = parseFloat(localStorage.getItem('aqVolume') || '0.5');
@@ -1246,20 +1370,19 @@ function start() {
     updateCoins();
     resumeAudio();
 
-    if (isHost) loadStorage();
-    else {
-        fishes = [];
-        plants = [];
-        contestEntries = [];
-        contestVotes = {};
-        contestCycleStartedAt = 0;
-        rebuildGal();
-    }
-    addUser(myId, myName, myColor);
+    fishes = [];
+    plants = [];
+    users = {};
+    foodPellets = [];
+    contestEntries = [];
+    contestVotes = {};
+    contestCycleStartedAt = 0;
+    roomLeaving = false;
+
+    bootstrapRoomSession(roomBootstrap || { room: { room_code: roomCode, acting_owner_id: myId }, state: {}, members: [] });
     startContestRefreshLoop();
     loadGlobalContestState(true);
-
-    if (isHost) initPeer(myId); else { initPeer(myId); setTimeout(() => connectTo(roomCode), 500); }
+    startRoomPolling();
     loop();
 }
 
@@ -1325,130 +1448,22 @@ function resizeLayout() {
     container.style.height = `${Math.max(420, window.innerHeight - hdr.offsetHeight)}px`;
 }
 
-function initPeer(id) {
-    try {
-        peer = new Peer(id, { debug: 0 });
-        peer.on('open', pid => {
-            myId = pid;
-            if (isHost) roomCode = pid;
-            updateHdr();
-            updateConnStatus(true);
-        });
-        peer.on('connection', conn => {
-            setupConn(conn);
-            if (isHost) setTimeout(() => {
-                conn.send(getRoomStatePayload());
-            }, 100);
-        });
-        peer.on('error', err => {
-            console.error('Peer error:', err);
-            updateConnStatus(false);
-            notify(isHost ? 'Could not create room connection.' : 'Room code not found or host unavailable.', '#ff6666');
-        });
-    } catch (e) {
-        console.error('Peer init error:', e);
-        updateConnStatus(false);
-    }
-}
-
-function connectTo(code) {
-    if (!peer) return setTimeout(() => connectTo(code), 100);
-    const conn = peer.connect(code);
-    let connected = false;
-    conn.on('open', () => {
-        connected = true;
-        setupConn(conn);
-        sendMsg({ type: 'HELLO', name: myName, color: myColor });
-        updateConnStatus(true);
-        notify(`Connected to room ${code}`, '#00c6ff');
-    });
-    conn.on('error', err => {
-        console.error('Connection error:', err);
-        updateConnStatus(false);
-        notify('Room code not found or host is offline.', '#ff6666');
-    });
-    setTimeout(() => {
-        if (!connected && !isHost) {
-            updateConnStatus(false);
-            notify('Still trying to join. Check the room code and ask the host to keep the room open.', '#ff6666');
-        }
-    }, 5000);
-}
-
-function setupConn(conn) {
-    conns[conn.peer] = conn;
-    conn.on('data', d => handleMsg(d, conn.peer));
-    conn.on('close', () => {
-        const u = users[conn.peer];
-        if (u) {
-            notify(`👋 ${u.name} left`, '#888');
-            playSound('bubble');
-            if (isHost) broadcast({ type: 'USER_LEFT', id: conn.peer, name: u.name, color: u.color }, conn.peer);
-        }
-        delete conns[conn.peer]; delete users[conn.peer]; updateHdr();
-        if (!isHost && Object.keys(conns).length === 0) {
-            updateConnStatus(false);
-            // Auto-reconnect attempts
-            let tries = 0;
-            const retry = () => {
-                if (tries++ > 5) return;
-                notify('🔄 Reconnecting...', '#ffa500');
-                try { connectTo(roomCode); } catch(e){}
-                setTimeout(() => { if (Object.keys(conns).length === 0) retry(); }, 2000);
-            };
-            setTimeout(retry, 1000);
-        }
-    });
-}
-
-function broadcast(msg, skip) {
-    Object.entries(conns).forEach(([id, conn]) => {
-        if (skip && id === skip) return;
-        try { conn.send(msg); } catch(e) {}
-    });
-}
-
-function sendMsg(msg) {
-    if (isHost) broadcast(msg); else {
-        const hostConn = Object.values(conns)[0];
-        if (hostConn && hostConn.open) try { hostConn.send(msg); } catch(e) {}
-    }
-}
-
-function shouldRelay(type) {
-    return ['INIT','FISH_ADD','FISH_DEL','FISH_EDIT','FISH_FEED_STATE','CHAT','DRAW_SEG','DRAW_FILL','DRAW_SPRAY','DRAW_SNAPSHOT','DRAW_CLEAR','THEME','NIGHT','FOOD_DROP','FOOD_EAT'].includes(type);
-}
-
 function handleMsg(d, from) {
     if (!d.type) return;
-    const sender = d.relayFrom || from;
-    if (isHost && from && shouldRelay(d.type)) {
-        if (!canRelayMessage(d, sender)) return;
-        broadcast({ ...d, relayFrom: sender }, from);
-    }
-    if (d.type === 'HELLO') {
-        addUser(sender, d.name, d.color);
-        notify(`👋 ${d.name} joined`, d.color);
-        playSound('bubble');
-        if (isHost) broadcast({ type: 'USER_JOIN', id: sender, name: d.name, color: d.color }, sender);
-    } else if (d.type === 'USER_JOIN') {
-        if (!users[d.id]) notify(`👋 ${d.name} joined`, d.color);
-        addUser(d.id, d.name, d.color);
+    const sender = from;
+    if (d.type === 'USER_JOIN') {
+        if (!users[d.id]) notify(`👋 ${d.name} joined`, d.color || '#9fb4d1');
+        users[d.id] = { id: d.id, name: d.name, color: d.color || '#9fb4d1' };
+        updateHdr();
         playSound('bubble');
     } else if (d.type === 'USER_LEFT') {
-        if (users[d.id]) notify(`👋 ${d.name || users[d.id].name} left`, '#888');
+        notify(`👋 ${d.name || users[d.id]?.name || 'Someone'} left`, '#888');
         delete users[d.id];
         updateHdr();
     } else if (d.type === 'INIT') {
-        if (!isHostId(sender)) return;
         fishes = d.fishes || [];
         plants = d.plants || [];
-        contestEntries = [];
-        contestVotes = {};
-        contestCycleStartedAt = 0;
-        if (Array.isArray(d.users) && d.users.length) {
-            Object.assign(users, d.users.reduce((a, u) => { a[u.id] = u; return a; }, {}));
-        }
+        foodPellets = Array.isArray(d.foodPellets) ? d.foodPellets : [];
         currentTheme = d.theme || 'Ocean'; nightMode = d.night || false;
         rebuildGal(); updateHdr(); setTheme(currentTheme, false);
         if (nightMode) updateNightMode();
@@ -1502,20 +1517,26 @@ function handleMsg(d, from) {
             syncFeedState(fish, true);
         }
     } else if (d.type === 'THEME') {
-        if (!isHostId(sender)) return;
         setTheme(d.theme, false);
     } else if (d.type === 'NIGHT') {
-        if (!isHostId(sender)) return;
         nightMode = !!d.night;
         updateNightMode();
         document.getElementById('theme-btn').textContent = nightMode ? '☀️' : '🌙';
     }
 }
 
-function updateConnStatus(connected) {
+function updateConnStatus(status) {
     const indicator = document.getElementById('conn-status');
-    indicator.style.background = connected ? '#00ff00' : '#ff4444';
-    indicator.title = connected ? 'Connected' : 'Disconnected';
+    const key = status === true ? 'connected' : status === false ? 'offline' : status;
+    const styleMap = {
+        connected: ['#00ff88', 'Connected'],
+        syncing: ['#ffd166', 'Syncing'],
+        reconnecting: ['#ffb347', 'Reconnecting'],
+        offline: ['#ff4444', 'Offline']
+    };
+    const [color, title] = styleMap[key] || styleMap.offline;
+    indicator.style.background = color;
+    indicator.title = title;
 }
 
 function addUser(id, name, color) {
@@ -1566,6 +1587,7 @@ function onDown(e) {
         saveHist();
         floodFill(pos.x, pos.y, brushColor, dc, drawC);
         sendMsg({ type: 'DRAW_FILL', x: pos.x, y: pos.y, color: brushColor });
+        sendDrawSnapshot();
         drawing = false;
     } else if (tool === 'spray') {
         saveHist();
@@ -1628,6 +1650,7 @@ function onUp(e) {
         });
     }
     drawing = false;
+    sendDrawSnapshot();
 }
 
 function doSpray(cx, cy) {
@@ -1790,7 +1813,7 @@ function release() {
     } else {
         unlockAch('first_plant');
     }
-    if (Object.keys(conns).length > 0) unlockAch('multi_artist');
+    if (Object.keys(users).length > 1) unlockAch('multi_artist');
 }
 
 function undoRelease() {

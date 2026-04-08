@@ -586,6 +586,8 @@
     <button onclick="openLeaderboard('contest')" title="Global contest">🏆</button>
     <button id="feed-btn" class="mobile-secondary" onclick="toggleFeedMode()" title="Feed mode">🍤</button>
     <button class="mobile-secondary" onclick="showMyCreatures()" title="My creatures">🗂️</button>
+    <button class="mobile-secondary" onclick="goToPublicOceanFromRoom()" title="Go to Public Ocean">🌍</button>
+    <button class="mobile-secondary" onclick="goToWelcomeFromRoom()" title="Back to welcome">🏠</button>
     <button class="mobile-secondary" onclick="screenshotAquarium()" title="Screenshot">📸</button>
     <button class="mobile-secondary" onclick="showAchievements()" title="Achievements">🏅</button>
     <span id="coin-display" class="coin-display mobile-secondary" style="font-size:11px;color:#FFD700;">🪙 0</span>
@@ -716,6 +718,8 @@
         <button id="mobile-sound-btn" onclick="toggleSound()">🔊 Sound</button>
         <button id="mobile-feed-btn" onclick="toggleFeedMode()">🍤 Feed Mode</button>
         <button onclick="showMyCreatures()">🗂️ My Creatures</button>
+        <button onclick="goToPublicOceanFromRoom()">🌍 Public Ocean</button>
+        <button onclick="goToWelcomeFromRoom()">🏠 Back to Welcome</button>
         <button onclick="screenshotAquarium()">📸 Screenshot</button>
         <button onclick="showAchievements()">🏅 Achievements</button>
         <button onclick="emptyTank()" class="mobile-menu-wide">🧹 Clear Tank</button>
@@ -1864,7 +1868,9 @@ function findDecoNear(x, y) {
 function initWelcome() {
     ensurePlayerIdentity();
     loadCreatureLibrary();
-    const hasCode = new URLSearchParams(location.search).get('room');
+    const welcomeParams = new URLSearchParams(location.search);
+    const hasCode = welcomeParams.get('room');
+    const autoJoinRequested = welcomeParams.get('autojoin') === '1';
     document.getElementById('join-prompt').style.display = 'block';
     setWelcomeStatus('');
     setWelcomeBusy(false);
@@ -1895,7 +1901,7 @@ function initWelcome() {
     if (hasCode) {
         updateLinkedRoomButton(hasCode);
         if (roomInput) roomInput.value = linkedRoomCode;
-        setWelcomeStatus(`Shared room ${linkedRoomCode} is ready. Add your name and join.`, 'info');
+        setWelcomeStatus(autoJoinRequested ? `Joining ${linkedRoomCode}...` : `Shared room ${linkedRoomCode} is ready. Add your name and join.`, 'info');
     } else {
         updateLinkedRoomButton('');
         const savedCode = getLastRoomCode();
@@ -1929,6 +1935,9 @@ function initWelcome() {
     setTimeout(() => {
         try { firstInput.focus(); } catch (e) {}
     }, 60);
+    if (hasCode && autoJoinRequested) {
+        setTimeout(() => { joinLinkedRoom(); }, 140);
+    }
 }
 
 function showJoin() {
@@ -1967,6 +1976,32 @@ function joinPublicOcean() {
     updateLinkedRoomButton('');
     setWelcomeStatus('Joining the shared Public Ocean...', 'info');
     joinRoom(PUBLIC_ROOM_CODE);
+}
+
+function roomBaseUrl() {
+    return location.href.split('?')[0];
+}
+
+function leaveAndNavigate(target = 'welcome') {
+    closeMobileMenu();
+    closeGlobalHub();
+    closeFishStats();
+    closeMyCreatures();
+    closeDrawPanel();
+    leaveRoomBackend();
+    const nextUrl = target === 'ocean'
+        ? `${roomBaseUrl()}?room=${encodeURIComponent(PUBLIC_ROOM_CODE)}&autojoin=1`
+        : roomBaseUrl();
+    setTimeout(() => { location.assign(nextUrl); }, 60);
+}
+
+function goToPublicOceanFromRoom() {
+    if (roomCode === PUBLIC_ROOM_CODE) return notify('Already in Public Ocean', '#9fb4d1');
+    leaveAndNavigate('ocean');
+}
+
+function goToWelcomeFromRoom() {
+    leaveAndNavigate('welcome');
 }
 
 function joinLinkedRoom() {
@@ -2282,6 +2317,10 @@ function start() {
     contestVotes = {};
     contestCycleStartedAt = 0;
     roomLeaving = false;
+    try {
+        const nextUrl = `${roomBaseUrl()}?room=${encodeURIComponent(roomCode || '')}`;
+        history.replaceState(null, '', roomCode ? nextUrl : roomBaseUrl());
+    } catch (e) {}
 
     bootstrapRoomSession(roomBootstrap || { room: { room_code: roomCode, acting_owner_id: myId }, state: {}, members: [] });
     startContestRefreshLoop();

@@ -173,7 +173,37 @@
             z-index: 200;
             min-height: 0;
         }
+        .rp-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
         #RP h3 { font-size: 12px; margin-bottom: 6px; }
+        .rp-head h3 {
+            flex: 1;
+            margin-bottom: 0;
+        }
+        .rp-close {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            min-width: 38px;
+            min-height: 38px;
+            background: var(--panel2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #drawer-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(1, 6, 12, 0.5);
+            z-index: 140;
+        }
         #edit-banner {
             background: var(--accent);
             color: white;
@@ -380,6 +410,12 @@
                 transform: translateX(0);
                 box-shadow: -2px 0 10px rgba(0,0,0,0.5);
             }
+            .rp-close {
+                display: inline-flex;
+            }
+            #drawer-backdrop.open {
+                display: block;
+            }
             .menu-toggle {
                 display: block !important;
             }
@@ -458,7 +494,7 @@
     <button onclick="screenshotAquarium()" title="Screenshot">📸</button>
     <button onclick="showAchievements()" title="Achievements">🏆</button>
     <span id="coin-display" style="font-size:11px;color:#FFD700;">🪙 0</span>
-    <button id="draw-toggle" class="menu-toggle" onclick="document.getElementById('RP').classList.toggle('open')">✏️</button>
+    <button id="draw-toggle" class="menu-toggle" onclick="toggleDrawPanel()">✏️</button>
 </div>
 
 <div id="welcome">
@@ -516,7 +552,10 @@
     </div>
 
     <div id="RP">
-        <h3>✏️ Draw</h3>
+        <div class="rp-head">
+            <h3>✏️ Draw</h3>
+            <button class="rp-close" onclick="closeDrawPanel()" aria-label="Close draw panel">✕</button>
+        </div>
         <div id="edit-banner">Editing: <span id="edit-name"></span></div>
 
         <div id="tool-grid"></div>
@@ -553,6 +592,7 @@
     </div>
 </div>
 
+<div id="drawer-backdrop" onclick="closeDrawPanel()"></div>
 <div id="notify"></div>
 
 <script>
@@ -991,6 +1031,24 @@ function copyInviteLink() {
     const link = `${location.href.split('?')[0]}?room=${encodeURIComponent(roomCode || '')}`;
     copyText(link, '🔗 Invite link copied');
 }
+function closeDrawPanel() {
+    const panel = document.getElementById('RP');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (panel) panel.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+}
+function openDrawPanel() {
+    const panel = document.getElementById('RP');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (panel) panel.classList.add('open');
+    if (backdrop && window.innerWidth <= 768) backdrop.classList.add('open');
+}
+function toggleDrawPanel() {
+    const panel = document.getElementById('RP');
+    if (!panel) return;
+    if (panel.classList.contains('open')) closeDrawPanel();
+    else openDrawPanel();
+}
 function getRoomStatePayload() {
     return {
         type: 'INIT',
@@ -1355,6 +1413,9 @@ function start() {
 
     resizeAq();
     window.addEventListener('resize', resizeAq);
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) closeDrawPanel();
+    });
     window.addEventListener('beforeunload', leaveRoomBackend, { once: true });
 
     drawC.addEventListener('mousedown', onDown, { passive: false });
@@ -1365,6 +1426,7 @@ function start() {
     drawC.addEventListener('touchend', e => { e.preventDefault(); onUp(e.changedTouches[0]); }, { passive: false });
 
     document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeDrawPanel();
         if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoStroke(); }
         if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); redoStroke(); }
     });

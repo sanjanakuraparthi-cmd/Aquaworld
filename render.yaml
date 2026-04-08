@@ -2,6 +2,7 @@ services:
   - type: web
     name: aquaworld
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python3 aquaworld_server.py
     envVars:

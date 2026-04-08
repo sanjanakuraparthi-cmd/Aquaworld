@@ -1021,10 +1021,6 @@ const PLAYER_PROFILE_KEY = 'aqPlayerProfileV1';
 const LAST_ROOM_KEY = 'aqLastRoomCodeV1';
 const CREATURE_LIBRARY_KEY = 'aqCreatureLibraryV1';
 const PUBLIC_ROOM_CODE = 'OCEAN';
-const BLOCKED_WORDS = [
-    'asshole', 'bastard', 'bitch', 'bullshit', 'dick', 'fck', 'fuck',
-    'motherfucker', 'penis', 'pussy', 'rape', 'shit', 'slut', 'vagina', 'whore'
-];
 
 let myColor = '#FF6B35', myName = 'Aquarist', myId = null, roomCode = null, isHost = false;
 let users = {}, fishes = [], plants = [], bubbles = [], particles = [];
@@ -1078,34 +1074,42 @@ function normalizeRoomCode(raw) {
     const clean = text.replace(/[^A-Za-z0-9_-]/g, '');
     return clean.toLowerCase();
 }
-function moderationKey(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-function containsBlockedWord(value) {
-    const key = moderationKey(value);
-    return !!key && BLOCKED_WORDS.some(word => key.includes(word));
+async function previewModeration(kind, text, defaultText = '') {
+    const fallbackText = String(text ?? '');
+    const fallbackDefault = String(defaultText ?? '');
+    if (!API_BASE && location.protocol === 'file:') {
+        return {
+            kind,
+            original: fallbackText,
+            cleaned: kind === 'chat' ? fallbackText.trim().slice(0, 100) : (fallbackText.trim().slice(0, 40) || fallbackDefault || 'Aquarist'),
+            moderated: false,
+            blocked: false
+        };
+    }
+    try {
+        return await apiFetch('/api/moderate/preview', {
+            method: 'POST',
+            body: JSON.stringify({
+                kind,
+                text: fallbackText,
+                default_text: fallbackDefault
+            })
+        });
+    } catch (err) {
+        return {
+            kind,
+            original: fallbackText,
+            cleaned: kind === 'chat' ? fallbackText.trim().slice(0, 100) : (fallbackText.trim().slice(0, 40) || fallbackDefault || 'Aquarist'),
+            moderated: false,
+            blocked: false
+        };
+    }
 }
 function sanitizePlayerName(value) {
-    const text = String(value || '').trim().slice(0, 40);
-    if (!text || containsBlockedWord(text)) return 'Aquarist';
-    return text;
+    return String(value || '').trim().slice(0, 40) || 'Aquarist';
 }
 function moderateChatText(value) {
-    const text = String(value || '').trim().slice(0, 100);
-    if (!text) return '';
-    let next = text;
-    let changed = false;
-    BLOCKED_WORDS.forEach(word => {
-        const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
-        if (re.test(next)) {
-            next = next.replace(re, match => '•'.repeat(match.length));
-            changed = true;
-        }
-    });
-    if (!changed && containsBlockedWord(text)) {
-        return '[message moderated]';
-    }
-    return next;
+    return String(value || '').trim().slice(0, 100);
 }
 function uniqueFishName(baseName, excludeId = '') {
     const base = String(baseName || '').trim().slice(0, 40) || randName();
@@ -1124,7 +1128,7 @@ function uniqueFishName(baseName, excludeId = '') {
     }
     return candidate.slice(0, 40);
 }
-function prepareFishName(value, excludeId = '') {
+async function prepareFishName(value, excludeId = '') {
     const original = String(value || '').trim();
     let base = original;
     let reason = '';
@@ -1132,8 +1136,9 @@ function prepareFishName(value, excludeId = '') {
         base = randName();
         reason = 'auto';
     }
-    if (containsBlockedWord(base)) {
-        base = randName();
+    const preview = await previewModeration('name', base, randName());
+    if (preview.cleaned && preview.cleaned !== base) {
+        base = preview.cleaned;
         reason = 'moderated';
     }
     const unique = uniqueFishName(base, excludeId);
@@ -1350,13 +1355,14 @@ function selectPlayerColor(color) {
     });
     savePlayerProfile();
 }
-function syncPlayerProfileFromInputs() {
+async function syncPlayerProfileFromInputs() {
     const nameInput = document.getElementById('name-input');
     const typedName = String(nameInput?.value || '').trim();
-    const nextName = sanitizePlayerName(typedName);
+    const preview = await previewModeration('name', typedName, 'Aquarist');
+    const nextName = sanitizePlayerName(preview.cleaned);
     myName = nextName;
     if (nameInput) nameInput.value = nextName;
-    if (typedName && typedName !== nextName) setWelcomeStatus('That name was softened to keep AquaWorld friendly.', 'warning');
+    if (typedName && preview.moderated) setWelcomeStatus('That name was softened to keep AquaWorld friendly.', 'warning');
     ensurePlayerIdentity();
     savePlayerProfile();
 }
@@ -1365,7 +1371,7 @@ function rememberPlayerNameDraft() {
     if (!nameInput) return;
     const typed = String(nameInput.value || '').trim();
     if (!typed) return;
-    myName = sanitizePlayerName(typed);
+    myName = typed.slice(0, 40);
     savePlayerProfile();
 }
 function getLastRoomCode() {
@@ -1997,7 +2003,7 @@ function rejoinLastRoom() {
 
 async function createRoom() {
     if (welcomeBusy) return;
-    syncPlayerProfileFromInputs();
+    await syncPlayerProfileFromInputs();
     roomCode = '';
     roomMeta = null;
     roomBootstrap = null;
@@ -2026,7 +2032,7 @@ async function createRoom() {
 
 async function joinRoom(prefilledCode = '') {
     if (welcomeBusy) return;
-    syncPlayerProfileFromInputs();
+    await syncPlayerProfileFromInputs();
     roomCode = normalizeRoomCode(prefilledCode || document.getElementById('room-input').value || linkedRoomCode || new URLSearchParams(location.search).get('room') || '').toUpperCase();
     document.getElementById('room-input').value = roomCode;
     if (!roomCode) {
@@ -2675,11 +2681,11 @@ function cropCanvas(src) {
     return crop;
 }
 
-function release() {
+async function release() {
     const canvas = cropCanvas(drawC);
     const scale = parseFloat(document.getElementById('fish-scale').value) || 1;
     const fishNameInput = document.getElementById('fish-name');
-    const preparedName = prepareFishName(fishNameInput.value, editingId || '');
+    const preparedName = await prepareFishName(fishNameInput.value, editingId || '');
     const name = preparedName.name;
     const kind = document.getElementById('fish-type').value;
     const releasePixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -2882,15 +2888,16 @@ function appendChat(name, color, text) {
     msgs.scrollTop = msgs.scrollHeight;
 }
 
-function sendChat() {
+async function sendChat() {
     const input = document.getElementById('msg-input');
     const text = input.value.trim();
     if (!text) return;
-    const safeText = moderateChatText(text);
+    const preview = await previewModeration('chat', text, '');
+    const safeText = moderateChatText(preview.cleaned);
     if (!safeText) return;
     resumeAudio();
     input.value = '';
-    if (safeText !== text) notify('💬 Kept that message kind for the room.', '#ffd166');
+    if (preview.moderated) notify('💬 Kept that message kind for the room.', '#ffd166');
     sendMsg({ type: 'CHAT', name: myName, color: myColor, text: safeText });
     appendChat(myName, myColor, safeText);
     const ownerFish = fishes.find(f => f.ownerId === myId);

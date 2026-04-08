@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -38,6 +39,40 @@ BLOCKED_WORDS = (
     "vagina",
     "whore",
 )
+LEET_TRANSLATION = str.maketrans({
+    "0": "o",
+    "1": "i",
+    "!": "i",
+    "3": "e",
+    "4": "a",
+    "@": "a",
+    "5": "s",
+    "$": "s",
+    "7": "t",
+    "+": "t",
+})
+FUZZY_CHAR_VARIANTS = {
+    "a": "a@4",
+    "b": "b8",
+    "c": "c(",
+    "d": "d",
+    "e": "e3",
+    "f": "f",
+    "g": "g69",
+    "h": "h",
+    "i": "i1!|l",
+    "k": "k",
+    "m": "m",
+    "n": "n",
+    "o": "o0",
+    "p": "p",
+    "r": "r",
+    "s": "s5$",
+    "t": "t7+",
+    "u": "u@v",
+    "v": "vu",
+    "w": "w",
+}
 
 CONTEST_THEMES = [
     ("Cutest Fish", "Show off the fish everyone wants to keep forever."),
@@ -508,12 +543,28 @@ def clean_text(value: object, default: str = "", limit: int = 120) -> str:
 
 
 def moderation_key(value: object) -> str:
-    return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+    text = str(value or "").lower().translate(LEET_TRANSLATION)
+    text = "".join(ch for ch in text if ch.isalnum())
+    return re.sub(r"(.)\1{2,}", r"\1", text)
+
+
+def fuzzy_word_pattern(word: str) -> re.Pattern[str]:
+    parts = []
+    for char in word.lower():
+        variant_chars = re.escape(FUZZY_CHAR_VARIANTS.get(char, char))
+        parts.append(f"[{variant_chars}]+")
+    return re.compile(r"[\W_]*".join(parts), re.IGNORECASE)
+
+
+BLOCKED_PATTERNS = tuple(fuzzy_word_pattern(word) for word in BLOCKED_WORDS)
 
 
 def contains_blocked_word(value: object) -> bool:
     key = moderation_key(value)
-    return bool(key) and any(word in key for word in BLOCKED_WORDS)
+    raw = str(value or "")
+    if bool(key) and any(word in key for word in BLOCKED_WORDS):
+        return True
+    return any(pattern.search(raw) for pattern in BLOCKED_PATTERNS)
 
 
 def safe_public_name(value: object, default: str = "Aquarist", limit: int = 40) -> str:
@@ -538,6 +589,31 @@ def moderate_chat_text(value: object, limit: int = 100) -> str:
     if contains_blocked_word(text):
         return "[message moderated]"
     return text
+
+
+def preview_moderation(kind: object, value: object, default_text: object = "") -> dict:
+    clean_kind = clean_text(kind, "name", 16).lower()
+    if clean_kind == "chat":
+        original = clean_text(value, "", 100)
+        cleaned = moderate_chat_text(value, 100)
+        return {
+            "kind": "chat",
+            "original": original,
+            "cleaned": cleaned,
+            "moderated": cleaned != original,
+            "blocked": cleaned == "[message moderated]",
+        }
+
+    fallback = clean_text(default_text, "Aquarist", 40)
+    original = clean_text(value, fallback, 40)
+    cleaned = safe_public_name(value, fallback, 40)
+    return {
+        "kind": "name",
+        "original": original,
+        "cleaned": cleaned,
+        "moderated": cleaned != original,
+        "blocked": cleaned == fallback and contains_blocked_word(value),
+    }
 
 
 def ensure_room_exists(conn: sqlite3.Connection, room_code: str, owner_id: str | None = None) -> sqlite3.Row:
@@ -841,6 +917,8 @@ class AquaHandler(SimpleHTTPRequestHandler):
             return self.handle_remove(payload)
         if parsed.path == "/api/global/frenzy":
             return self.handle_frenzy(payload)
+        if parsed.path == "/api/moderate/preview":
+            return self.handle_moderation_preview(payload)
         if parsed.path == "/api/rooms/create":
             return self.handle_room_create(payload)
         if parsed.path == "/api/rooms/join":
@@ -851,6 +929,14 @@ class AquaHandler(SimpleHTTPRequestHandler):
             return self.handle_room_leave(payload)
 
         return self.write_json({"ok": False, "error": "Not found"}, 404)
+
+    def handle_moderation_preview(self, payload: dict) -> None:
+        result = preview_moderation(
+            payload.get("kind"),
+            payload.get("text"),
+            payload.get("default_text"),
+        )
+        self.write_json({"ok": True, **result})
 
     def handle_submit(self, payload: dict) -> None:
         fish = payload.get("fish") or {}
